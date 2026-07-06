@@ -1,0 +1,26 @@
+---
+# meta/main.yml — rhel_zabbix_agent
+galaxy_info:
+  role_name: rhel_zabbix_agent
+  namespace: detrandf
+  author: DETRAN-DF — Infraestrutura
+  description: Instalação e configuração do zabbix-agent2 em RHEL 7/8/9/10.
+  company: DETRAN-DF
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+  galaxy_tags:
+    - rhel
+    - zabbix
+    - monitoring
+    - agent
+    - aap
+
+# Requer ansible.posix (firewalld) quando rhel_zabbix_agent_manage_firewall=true.
+dependencies: []

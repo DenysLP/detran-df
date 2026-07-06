@@ -1,0 +1,29 @@
+---
+# tasks/main.yml — rhel_packages
+
+- name: Validar que o host é RHEL suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'RedHat'
+      - ansible_facts['distribution_major_version'] in rhel_packages_supported_majors
+    fail_msg: >-
+      Host não é RHEL suportado (aceitos: {{ rhel_packages_supported_majors | join(', ') }}).
+  when: rhel_packages_assert_supported | bool
+
+- name: Instalar pacotes
+  ansible.builtin.package:
+    name: "{{ rhel_packages_install }}"
+    state: "{{ rhel_packages_state }}"
+  when: rhel_packages_install | length > 0
+
+- name: Instalar grupos de pacotes
+  ansible.builtin.package:
+    name: "{{ rhel_packages_groups }}"
+    state: present
+  when: rhel_packages_groups | length > 0
+
+- name: Remover pacotes
+  ansible.builtin.package:
+    name: "{{ rhel_packages_remove }}"
+    state: absent
+  when: rhel_packages_remove | length > 0

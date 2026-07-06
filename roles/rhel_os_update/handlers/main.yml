@@ -1,0 +1,7 @@
+---
+# handlers/main.yml — rhel_os_update
+# O reboot é tratado inline em tasks/main.yml (lógica auto/true/false).
+- name: Reboot host
+  ansible.builtin.reboot:
+    msg: "{{ rhel_os_update_reboot_msg }}"
+    reboot_timeout: "{{ rhel_os_update_reboot_timeout }}"

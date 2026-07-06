@@ -1,0 +1,32 @@
+---
+# defaults/main.yml — rhel_packages
+# Usa o módulo genérico ansible.builtin.package (funciona com yum/dnf/dnf5),
+# portanto atende RHEL 7/8/9/10 sem ramificação por versão.
+
+rhel_packages_supported_majors:
+  - "7"
+  - "8"
+  - "9"
+  - "10"
+
+# Pacotes a garantir instalados
+rhel_packages_install:
+  - vim-enhanced
+  - wget
+  - curl
+  - tar
+  - unzip
+  - bash-completion
+
+# Pacotes a remover
+rhel_packages_remove: []
+
+# Grupos de pacotes (prefixo @), ex.: ["@Development Tools"]
+rhel_packages_groups: []
+
+# Estado dos pacotes de rhel_packages_install:
+#   present -> instala se faltar
+#   latest  -> instala e mantém na última versão
+rhel_packages_state: present
+
+rhel_packages_assert_supported: true

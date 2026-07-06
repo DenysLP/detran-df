@@ -1,0 +1,42 @@
+---
+# defaults/main.yml — rhel_ntp
+# NTP via chrony (chronyd) — padrão em RHEL 7/8/9/10.
+
+rhel_ntp_supported_majors:
+  - "7"
+  - "8"
+  - "9"
+  - "10"
+
+rhel_ntp_package: chrony
+rhel_ntp_service: chronyd
+
+# Servidores NTP. Padrão: NTP.br (Observatório Nacional) — adequado para órgãos BR.
+rhel_ntp_servers:
+  - a.st1.ntp.br
+  - b.st1.ntp.br
+  - c.st1.ntp.br
+  - d.st1.ntp.br
+
+# Opções aplicadas a cada linha "server"
+rhel_ntp_server_options: "iburst"
+
+# Pools (opcional). Gera linhas "pool" além dos servers.
+rhel_ntp_pools: []
+
+# Timezone do host ("" para não alterar)
+rhel_ntp_timezone: "America/Sao_Paulo"
+
+# Redes autorizadas a receber tempo deste host (vazio = não serve tempo)
+rhel_ntp_allow_networks: []
+
+# Correção abrupta inicial do relógio
+rhel_ntp_makestep_threshold: 1.0
+rhel_ntp_makestep_limit: 3
+
+# Sincroniza o RTC (relógio de hardware)
+rhel_ntp_rtcsync: true
+
+rhel_ntp_conf_path: /etc/chrony.conf
+rhel_ntp_service_enabled: true
+rhel_ntp_assert_supported: true

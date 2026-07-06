@@ -1,0 +1,37 @@
+---
+# tasks/main.yml — rhel_ntp
+
+- name: Validar que o host é RHEL suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'RedHat'
+      - ansible_facts['distribution_major_version'] in rhel_ntp_supported_majors
+    fail_msg: >-
+      Host não é RHEL suportado (aceitos: {{ rhel_ntp_supported_majors | join(', ') }}).
+  when: rhel_ntp_assert_supported | bool
+
+- name: Instalar o chrony
+  ansible.builtin.package:
+    name: "{{ rhel_ntp_package }}"
+    state: present
+
+- name: Definir timezone do host
+  community.general.timezone:
+    name: "{{ rhel_ntp_timezone }}"
+  when: rhel_ntp_timezone | length > 0
+
+- name: Configurar o chrony.conf
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: "{{ rhel_ntp_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Restart chrony
+
+- name: Habilitar e iniciar o serviço chronyd
+  ansible.builtin.service:
+    name: "{{ rhel_ntp_service }}"
+    state: started
+    enabled: "{{ rhel_ntp_service_enabled | bool }}"

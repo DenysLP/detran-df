@@ -1,0 +1,93 @@
+---
+# tasks/main.yml — rhel_os_update
+# Detecta o gerenciador via ansible_facts['pkg_mgr']:
+#   RHEL 7 -> yum | RHEL 8/9 -> dnf | RHEL 10 -> dnf5
+
+- name: Validar que o host é RHEL suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'RedHat'
+      - ansible_facts['distribution_major_version'] in rhel_os_update_supported_majors
+    fail_msg: >-
+      Host não é RHEL suportado (detectado:
+      {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_version'] }};
+      aceitos: {{ rhel_os_update_supported_majors | join(', ') }}).
+    success_msg: "Host validado ({{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}, pkg_mgr={{ ansible_facts['pkg_mgr'] }})."
+  when: rhel_os_update_assert_supported | bool
+
+# --- RHEL 7 (yum) ---
+- name: "Atualizar via yum (RHEL 7)"
+  when: ansible_facts['pkg_mgr'] == 'yum'
+  block:
+    - name: Aplicar atualizações (yum)
+      ansible.builtin.yum:
+        name: "*"
+        state: latest
+        security: "{{ rhel_os_update_scope == 'security' }}"
+        exclude: "{{ rhel_os_update_exclude }}"
+        update_cache: "{{ rhel_os_update_update_cache }}"
+      register: rhel_os_update_result
+    - name: Remover pacotes órfãos (yum autoremove)
+      ansible.builtin.yum:
+        autoremove: true
+      when: rhel_os_update_autoremove | bool
+
+# --- RHEL 8/9 (dnf) ---
+- name: "Atualizar via dnf (RHEL 8/9)"
+  when: ansible_facts['pkg_mgr'] == 'dnf'
+  block:
+    - name: Aplicar atualizações (dnf)
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        security: "{{ rhel_os_update_scope == 'security' }}"
+        exclude: "{{ rhel_os_update_exclude }}"
+        update_cache: "{{ rhel_os_update_update_cache }}"
+      register: rhel_os_update_result
+    - name: Remover pacotes órfãos (dnf autoremove)
+      ansible.builtin.dnf:
+        autoremove: true
+      when: rhel_os_update_autoremove | bool
+
+# --- RHEL 10 (dnf5) ---
+- name: "Atualizar via dnf5 (RHEL 10)"
+  when: ansible_facts['pkg_mgr'] == 'dnf5'
+  block:
+    - name: Aplicar atualizações (dnf5)
+      ansible.builtin.dnf5:
+        name: "*"
+        state: latest
+        security: "{{ rhel_os_update_scope == 'security' }}"
+        exclude: "{{ rhel_os_update_exclude }}"
+        update_cache: "{{ rhel_os_update_update_cache }}"
+      register: rhel_os_update_result
+    - name: Remover pacotes órfãos (dnf5 autoremove)
+      ansible.builtin.dnf5:
+        autoremove: true
+      when: rhel_os_update_autoremove | bool
+
+- name: Verificar se um reboot é necessário
+  ansible.builtin.command: needs-restarting -r
+  register: rhel_os_update_needs_restarting
+  changed_when: false
+  failed_when: false
+  when: rhel_os_update_reboot == 'auto'
+
+- name: Reiniciar o host (reboot necessário / forçado)
+  ansible.builtin.reboot:
+    msg: "{{ rhel_os_update_reboot_msg }}"
+    reboot_timeout: "{{ rhel_os_update_reboot_timeout }}"
+  when: >-
+    (rhel_os_update_reboot | string == 'true' and
+       rhel_os_update_result.changed | default(false))
+    or
+    (rhel_os_update_reboot == 'auto' and
+       rhel_os_update_needs_restarting.rc | default(0) == 1)
+
+- name: Resumo do update
+  ansible.builtin.debug:
+    msg: >-
+      pkg_mgr={{ ansible_facts['pkg_mgr'] }} |
+      escopo={{ rhel_os_update_scope }} |
+      alterou={{ rhel_os_update_result.changed | default(false) }} |
+      reboot={{ rhel_os_update_reboot }}

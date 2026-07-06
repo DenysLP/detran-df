@@ -1,0 +1,7 @@
+---
+# collections/requirements.yml
+# Coleções necessárias pelas roles. O AAP resolve isso ao sincronizar o Project
+# (ou já vêm na Execution Environment padrão).
+collections:
+  - name: ansible.posix      # firewalld (rhel_zabbix_agent)
+  - name: community.general  # timezone (rhel_ntp)

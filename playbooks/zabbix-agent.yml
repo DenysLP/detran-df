@@ -1,0 +1,21 @@
+---
+# playbooks/zabbix-agent.yml — exemplo de uso da role rhel_zabbix_agent (RHEL 7/8/9/10)
+# Dica AAP: guarde o PSK secret em um Vault Credential e injete via extra_vars.
+
+- name: Instalar e configurar zabbix-agent2 em hosts RHEL
+  hosts: rhel
+  become: true
+  vars:
+    rhel_zabbix_agent_major: "7.0"
+    rhel_zabbix_agent_server: "zabbix.detran.df.gov.br"
+    rhel_zabbix_agent_server_active: "zabbix.detran.df.gov.br"
+    rhel_zabbix_agent_hostname: "{{ inventory_hostname }}"
+    rhel_zabbix_agent_host_metadata: "linux:detran-df"
+    rhel_zabbix_agent_manage_firewall: true
+    # TLS/PSK (produção) — mantenha o secret em ansible-vault:
+    # rhel_zabbix_agent_tls_connect: psk
+    # rhel_zabbix_agent_tls_accept: psk
+    # rhel_zabbix_agent_tls_psk_identity: "PSK-DETRAN-DF"
+    # rhel_zabbix_agent_tls_psk_secret: "{{ vault_zabbix_psk }}"
+  roles:
+    - role: rhel_zabbix_agent

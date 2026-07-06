@@ -1,0 +1,26 @@
+---
+# meta/main.yml — rhel_os_update
+galaxy_info:
+  role_name: rhel_os_update
+  namespace: detrandf
+  author: DETRAN-DF — Infraestrutura
+  description: Atualização de SO (yum/dnf/dnf5) em RHEL 7/8/9/10 com reboot controlado.
+  company: DETRAN-DF
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+  galaxy_tags:
+    - rhel
+    - update
+    - patching
+    - dnf
+    - yum
+    - aap
+
+dependencies: []

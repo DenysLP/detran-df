@@ -1,0 +1,25 @@
+---
+# meta/main.yml — rhel_packages
+galaxy_info:
+  role_name: rhel_packages
+  namespace: detrandf
+  author: DETRAN-DF — Infraestrutura
+  description: Instalação/remoção de pacotes e grupos (package) em RHEL 7/8/9/10.
+  company: DETRAN-DF
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+  galaxy_tags:
+    - rhel
+    - packages
+    - dnf
+    - yum
+    - aap
+
+dependencies: []

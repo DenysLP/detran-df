@@ -1,0 +1,26 @@
+---
+# meta/main.yml — rhel_ntp
+galaxy_info:
+  role_name: rhel_ntp
+  namespace: detrandf
+  author: DETRAN-DF — Infraestrutura
+  description: Instalação e configuração de NTP (chrony) em RHEL 7/8/9/10.
+  company: DETRAN-DF
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+  galaxy_tags:
+    - rhel
+    - ntp
+    - chrony
+    - time
+    - aap
+
+# Requer community.general (módulo timezone).
+dependencies: []

@@ -1,0 +1,6 @@
+---
+# handlers/main.yml — rhel_zabbix_agent
+- name: Restart zabbix agent
+  ansible.builtin.service:
+    name: "{{ rhel_zabbix_agent_service }}"
+    state: restarted

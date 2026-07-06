@@ -1,0 +1,63 @@
+---
+# tasks/main.yml — rhel_zabbix_agent
+
+- name: Validar que o host é RHEL suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'RedHat'
+      - ansible_facts['distribution_major_version'] in rhel_zabbix_agent_supported_majors
+    fail_msg: >-
+      Host não é RHEL suportado (aceitos: {{ rhel_zabbix_agent_supported_majors | join(', ') }}).
+  when: rhel_zabbix_agent_assert_supported | bool
+
+- name: Configurar o repositório oficial do Zabbix
+  ansible.builtin.yum_repository:
+    name: "zabbix-agent"
+    description: "Zabbix Official Repository {{ rhel_zabbix_agent_major }} (RHEL {{ ansible_facts['distribution_major_version'] }})"
+    baseurl: "{{ rhel_zabbix_agent_repo_baseurl }}"
+    gpgkey: "{{ rhel_zabbix_agent_repo_gpgkey }}"
+    gpgcheck: "{{ rhel_zabbix_agent_repo_gpgcheck | bool }}"
+    enabled: true
+  when: rhel_zabbix_agent_manage_repo | bool
+
+- name: Instalar o agente Zabbix
+  ansible.builtin.package:
+    name: "{{ rhel_zabbix_agent_package }}"
+    state: present
+
+- name: Provisionar arquivo PSK (TLS)
+  ansible.builtin.copy:
+    content: "{{ rhel_zabbix_agent_tls_psk_secret }}"
+    dest: "{{ rhel_zabbix_agent_tls_psk_file }}"
+    owner: zabbix
+    group: zabbix
+    mode: "0600"
+  when:
+    - rhel_zabbix_agent_tls_connect == 'psk' or rhel_zabbix_agent_tls_accept == 'psk'
+    - rhel_zabbix_agent_tls_psk_secret | length > 0
+  no_log: true
+  notify: Restart zabbix agent
+
+- name: Configurar o agente Zabbix
+  ansible.builtin.template:
+    src: zabbix_agent2.conf.j2
+    dest: "/etc/zabbix/{{ 'zabbix_agent2.conf' if 'agent2' in rhel_zabbix_agent_package else 'zabbix_agentd.conf' }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Restart zabbix agent
+
+- name: Abrir a porta do agente no firewalld
+  ansible.posix.firewalld:
+    port: "{{ rhel_zabbix_agent_listen_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when: rhel_zabbix_agent_manage_firewall | bool
+
+- name: Habilitar e iniciar o serviço do agente
+  ansible.builtin.service:
+    name: "{{ rhel_zabbix_agent_service }}"
+    state: started
+    enabled: "{{ rhel_zabbix_agent_service_enabled | bool }}"

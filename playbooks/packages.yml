@@ -1,0 +1,21 @@
+---
+# playbooks/packages.yml — exemplo de uso da role rhel_packages (RHEL 7/8/9/10)
+
+- name: Garantir baseline de pacotes em hosts RHEL
+  hosts: rhel
+  become: true
+  vars:
+    rhel_packages_install:
+      - vim-enhanced
+      - git
+      - htop
+      - tmux
+      - net-tools
+      - bind-utils
+    rhel_packages_groups:
+      - "@Development Tools"
+    rhel_packages_remove:
+      - telnet
+    rhel_packages_state: present
+  roles:
+    - role: rhel_packages

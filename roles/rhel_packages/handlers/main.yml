@@ -1,0 +1,4 @@
+---
+# handlers/main.yml — rhel_packages
+# Sem handlers por padrão.
+[]

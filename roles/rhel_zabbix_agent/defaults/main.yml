@@ -1,0 +1,54 @@
+---
+# defaults/main.yml — rhel_zabbix_agent
+# Atende RHEL 7/8/9/10 — a URL do repositório usa a versão maior detectada do host.
+
+rhel_zabbix_agent_supported_majors:
+  - "7"
+  - "8"
+  - "9"
+  - "10"
+
+# Linha do Zabbix (repositório oficial). Garanta que a versão suporta o RHEL alvo.
+rhel_zabbix_agent_major: "7.0"
+
+# Agente: "zabbix-agent2" (recomendado) ou "zabbix-agent" (clássico)
+rhel_zabbix_agent_package: zabbix-agent2
+rhel_zabbix_agent_service: zabbix-agent2
+
+# --- Repositório oficial Zabbix ---
+rhel_zabbix_agent_manage_repo: true
+# {{ major_release }} é substituído pela versão maior do host (7/8/9/10).
+rhel_zabbix_agent_repo_baseurl: >-
+  https://repo.zabbix.com/zabbix/{{ rhel_zabbix_agent_major }}/rhel/{{ ansible_facts['distribution_major_version'] }}/$basearch/
+rhel_zabbix_agent_repo_gpgkey: "https://repo.zabbix.com/RPM-GPG-KEY-ZABBIX-08EFA7DD"
+rhel_zabbix_agent_repo_gpgcheck: true
+
+# --- Conexão com o Zabbix Server / Proxy ---
+rhel_zabbix_agent_server: "127.0.0.1"
+rhel_zabbix_agent_server_active: "127.0.0.1"
+rhel_zabbix_agent_hostname: "{{ inventory_hostname }}"
+
+rhel_zabbix_agent_listen_port: 10050
+rhel_zabbix_agent_listen_ip: "0.0.0.0"
+
+# Metadados para autoregistration (opcional)
+rhel_zabbix_agent_host_metadata: ""
+
+# Nível de log: 0..5 (3 = warnings)
+rhel_zabbix_agent_debug_level: 3
+
+# Arquivos .conf adicionais (userparameters etc.)
+rhel_zabbix_agent_include: "/etc/zabbix/zabbix_agent2.d/*.conf"
+
+# TLS (opcional): unencrypted | psk
+rhel_zabbix_agent_tls_connect: "unencrypted"
+rhel_zabbix_agent_tls_accept: "unencrypted"
+rhel_zabbix_agent_tls_psk_identity: ""
+rhel_zabbix_agent_tls_psk_secret: ""        # use ansible-vault!
+rhel_zabbix_agent_tls_psk_file: "/etc/zabbix/zabbix_agent2.psk"
+
+# Abrir a porta no firewalld
+rhel_zabbix_agent_manage_firewall: false
+
+rhel_zabbix_agent_service_enabled: true
+rhel_zabbix_agent_assert_supported: true

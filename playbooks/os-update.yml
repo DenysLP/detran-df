@@ -1,0 +1,15 @@
+---
+# playbooks/os-update.yml — exemplo de uso da role rhel_os_update
+# Funciona em RHEL 7/8/9/10 (yum/dnf/dnf5 detectados automaticamente).
+# AAP: survey sugerido -> rhel_os_update_scope (all/security), rhel_os_update_reboot (auto/true/false).
+
+- name: Atualizar sistema operacional em hosts RHEL
+  hosts: rhel
+  become: true
+  serial: "25%"
+  vars:
+    rhel_os_update_scope: security
+    rhel_os_update_reboot: auto
+    rhel_os_update_exclude: []
+  roles:
+    - role: rhel_os_update

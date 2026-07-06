@@ -1,0 +1,29 @@
+{{ ansible_managed | comment }}
+# Gerenciado pela role Ansible rhel_zabbix_agent — NÃO edite manualmente.
+
+PidFile=/run/zabbix/zabbix_agent2.pid
+LogType=file
+LogFile=/var/log/zabbix/zabbix_agent2.log
+LogFileSize=0
+DebugLevel={{ rhel_zabbix_agent_debug_level }}
+
+Server={{ rhel_zabbix_agent_server }}
+ServerActive={{ rhel_zabbix_agent_server_active }}
+Hostname={{ rhel_zabbix_agent_hostname }}
+
+ListenPort={{ rhel_zabbix_agent_listen_port }}
+ListenIP={{ rhel_zabbix_agent_listen_ip }}
+
+{% if rhel_zabbix_agent_host_metadata | length > 0 %}
+HostMetadata={{ rhel_zabbix_agent_host_metadata }}
+{% endif %}
+
+# TLS
+TLSConnect={{ rhel_zabbix_agent_tls_connect }}
+TLSAccept={{ rhel_zabbix_agent_tls_accept }}
+{% if rhel_zabbix_agent_tls_connect == 'psk' or rhel_zabbix_agent_tls_accept == 'psk' %}
+TLSPSKIdentity={{ rhel_zabbix_agent_tls_psk_identity }}
+TLSPSKFile={{ rhel_zabbix_agent_tls_psk_file }}
+{% endif %}
+
+Include={{ rhel_zabbix_agent_include }}
