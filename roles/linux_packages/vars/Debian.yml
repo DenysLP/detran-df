@@ -1,0 +1,10 @@
+---
+# vars/Debian.yml — linux_packages (Debian e Ubuntu)
+# Mesmos utilitários da baseline, com os nomes usados no Debian/Ubuntu.
+linux_packages_baseline:
+  - vim
+  - wget
+  - curl
+  - tar
+  - unzip
+  - bash-completion

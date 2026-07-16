@@ -1,0 +1,8 @@
+---
+# vars/Debian.yml — linux_checkup (Debian e Ubuntu)
+# Caminhos varridos em busca de configuração de proxy.
+linux_checkup_proxy_scan_paths:
+  - /etc/environment
+  - /etc/profile.d
+  - /etc/apt/apt.conf
+  - /etc/apt/apt.conf.d

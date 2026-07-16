@@ -1,0 +1,52 @@
+---
+# tasks/main.yml — linux_packages
+# Instala/remove pacotes em RHEL, Debian e Ubuntu via ansible.builtin.package.
+# A baseline com os nomes corretos de cada família vem de vars/<os_family>.yml.
+
+- name: Validar que o SO é suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in linux_packages_supported_families
+    fail_msg: >-
+      SO não suportado ({{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}; família
+      {{ ansible_facts['os_family'] }}). Aceitos:
+      {{ linux_packages_supported_families | join(', ') }}.
+  when: linux_packages_assert_supported | bool
+
+- name: "Carregar variáveis da família ({{ ansible_facts['os_family'] }})"
+  ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
+
+- name: Atualizar cache do apt (Debian/Ubuntu)
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Instalar a baseline de pacotes
+  ansible.builtin.package:
+    name: "{{ linux_packages_baseline }}"
+    state: "{{ linux_packages_state }}"
+  when:
+    - linux_packages_manage_baseline | bool
+    - linux_packages_baseline | length > 0
+
+- name: Instalar pacotes adicionais
+  ansible.builtin.package:
+    name: "{{ linux_packages_install }}"
+    state: "{{ linux_packages_state }}"
+  when: linux_packages_install | length > 0
+
+- name: Instalar grupos de pacotes (somente RHEL)
+  ansible.builtin.package:
+    name: "{{ linux_packages_groups }}"
+    state: present
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - linux_packages_groups | length > 0
+
+- name: Remover pacotes
+  ansible.builtin.package:
+    name: "{{ linux_packages_remove }}"
+    state: absent
+  when: linux_packages_remove | length > 0

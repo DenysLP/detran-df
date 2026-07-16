@@ -3,5 +3,5 @@
 # Coleções necessárias pelas roles. O AAP resolve isso ao sincronizar o Project
 # (ou já vêm na Execution Environment padrão).
 collections:
-  - name: ansible.posix      # firewalld (rhel_zabbix_agent)
-  - name: community.general  # timezone (rhel_ntp)
+  - name: ansible.posix      # firewalld (linux_zabbix_agent, RHEL)
+  - name: community.general  # timezone (linux_ntp) e ufw (linux_zabbix_agent, Debian/Ubuntu)

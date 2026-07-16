@@ -1,0 +1,29 @@
+{{ ansible_managed | comment }}
+# Gerenciado pela role Ansible linux_zabbix_agent — NÃO edite manualmente.
+
+PidFile=/run/zabbix/zabbix_agent2.pid
+LogType=file
+LogFile=/var/log/zabbix/zabbix_agent2.log
+LogFileSize=0
+DebugLevel={{ linux_zabbix_agent_debug_level }}
+
+Server={{ linux_zabbix_agent_server }}
+ServerActive={{ linux_zabbix_agent_server_active }}
+Hostname={{ linux_zabbix_agent_hostname }}
+
+ListenPort={{ linux_zabbix_agent_listen_port }}
+ListenIP={{ linux_zabbix_agent_listen_ip }}
+
+{% if linux_zabbix_agent_host_metadata | length > 0 %}
+HostMetadata={{ linux_zabbix_agent_host_metadata }}
+{% endif %}
+
+# TLS
+TLSConnect={{ linux_zabbix_agent_tls_connect }}
+TLSAccept={{ linux_zabbix_agent_tls_accept }}
+{% if linux_zabbix_agent_tls_connect == 'psk' or linux_zabbix_agent_tls_accept == 'psk' %}
+TLSPSKIdentity={{ linux_zabbix_agent_tls_psk_identity }}
+TLSPSKFile={{ linux_zabbix_agent_tls_psk_file }}
+{% endif %}
+
+Include={{ linux_zabbix_agent_include }}

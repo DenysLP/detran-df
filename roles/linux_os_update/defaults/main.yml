@@ -1,0 +1,37 @@
+---
+# defaults/main.yml — linux_os_update
+# Suporta RHEL/derivados 7/8/9/10 (yum/dnf/dnf5) e Debian/Ubuntu (apt),
+# detectando a família e o gerenciador de pacotes automaticamente.
+
+# Famílias de SO aceitas pela validação (ansible_facts['os_family'])
+linux_os_update_supported_families:
+  - RedHat
+  - Debian
+
+# Escopo do update:
+#   all      -> atualiza todos os pacotes
+#   security -> aplica apenas erratas de segurança
+#               (RHEL: security=yes do dnf/yum; Debian/Ubuntu: unattended-upgrade)
+linux_os_update_scope: all
+
+# Pacotes a excluir do update (ex.: ["kernel*"]).
+# Honrado no RHEL (exclude do yum/dnf). No Debian/Ubuntu use apt-mark hold.
+linux_os_update_exclude: []
+
+# Atualiza o cache do gerenciador antes de aplicar
+linux_os_update_update_cache: true
+
+# Remove pacotes órfãos (autoremove) ao final
+linux_os_update_autoremove: false
+
+# Reboot controlado quando o update exigir (novo kernel/glibc etc.)
+#   auto -> reinicia só se o SO sinalizar necessidade
+#           (RHEL: 'needs-restarting -r'; Debian/Ubuntu: /var/run/reboot-required)
+#   true -> força reboot sempre que houver pacotes atualizados
+#   false-> nunca reinicia
+linux_os_update_reboot: auto
+linux_os_update_reboot_timeout: 900
+linux_os_update_reboot_msg: "Reboot acionado pelo Ansible (linux_os_update) após atualização do SO"
+
+# Falha a task se o host não for de uma família suportada
+linux_os_update_assert_supported: true

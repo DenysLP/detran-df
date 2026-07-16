@@ -1,0 +1,9 @@
+---
+# vars/RedHat.yml — linux_checkup (RHEL e derivados)
+# Caminhos varridos em busca de configuração de proxy.
+linux_checkup_proxy_scan_paths:
+  - /etc/environment
+  - /etc/profile.d
+  - /etc/dnf/dnf.conf
+  - /etc/yum.conf
+  - /etc/yum.repos.d

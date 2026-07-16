@@ -1,0 +1,11 @@
+---
+# playbooks/checkup.yml — inventário/check-up READ-ONLY dos hosts (RHEL / Debian / Ubuntu)
+# Rode ANTES de qualquer role que altera o sistema. Não muda nada no host.
+# AAP: use como primeiro passo de um Workflow (gate de estado antes das mudanças).
+
+- name: Check-up / inventário dos hosts Linux
+  hosts: linux
+  become: true
+  gather_facts: true
+  roles:
+    - role: linux_checkup

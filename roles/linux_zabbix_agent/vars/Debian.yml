@@ -1,0 +1,8 @@
+---
+# vars/Debian.yml — linux_zabbix_agent (Debian e Ubuntu)
+# Repositório APT oficial do Zabbix. 'debian' ou 'ubuntu' conforme a distro,
+# e o codinome da release (bookworm, jammy, ...) entra na linha do apt.
+linux_zabbix_agent_apt_flavor: "{{ 'ubuntu' if ansible_facts['distribution'] == 'Ubuntu' else 'debian' }}"
+linux_zabbix_agent_repo_baseurl: "https://repo.zabbix.com/zabbix/{{ linux_zabbix_agent_major }}/{{ linux_zabbix_agent_apt_flavor }}"
+linux_zabbix_agent_repo_gpgkey: "https://repo.zabbix.com/zabbix-official-repo.key"
+linux_zabbix_agent_apt_keyring: /etc/apt/keyrings/zabbix.asc

@@ -1,21 +1,22 @@
 ---
-# playbooks/packages.yml — exemplo de uso da role rhel_packages (RHEL 7/8/9/10)
+# playbooks/packages.yml — exemplo de uso da role linux_packages (RHEL / Debian / Ubuntu)
 
-- name: Garantir baseline de pacotes em hosts RHEL
-  hosts: rhel
+- name: Garantir baseline de pacotes em hosts Linux
+  hosts: linux
   become: true
   vars:
-    rhel_packages_install:
-      - vim-enhanced
+    # A baseline (vim/wget/curl/tar/unzip/bash-completion) já é aplicada com os nomes
+    # corretos por família. Aqui vão pacotes adicionais que existem tanto em RHEL
+    # quanto em Debian/Ubuntu:
+    linux_packages_install:
       - git
       - htop
       - tmux
-      - net-tools
-      - bind-utils
-    rhel_packages_groups:
-      - "@Development Tools"
-    rhel_packages_remove:
+    linux_packages_remove:
       - telnet
-    rhel_packages_state: present
+    # Grupos '@' são um conceito de RHEL (ignorados em Debian/Ubuntu):
+    linux_packages_groups:
+      - "@Development Tools"
+    linux_packages_state: present
   roles:
-    - role: rhel_packages
+    - role: linux_packages

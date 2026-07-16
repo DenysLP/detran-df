@@ -1,0 +1,38 @@
+---
+# defaults/main.yml — linux_ntp
+# NTP via chrony (padrão em RHEL, Debian e Ubuntu).
+# Pacote/serviço/caminhos específicos de cada família ficam em vars/<os_family>.yml.
+
+# Famílias de SO aceitas pela validação (ansible_facts['os_family'])
+linux_ntp_supported_families:
+  - RedHat
+  - Debian
+
+# Servidores NTP. Padrão: NTP.br (Observatório Nacional) — adequado para órgãos BR.
+linux_ntp_servers:
+  - a.st1.ntp.br
+  - b.st1.ntp.br
+  - c.st1.ntp.br
+  - d.st1.ntp.br
+
+# Opções aplicadas a cada linha "server"
+linux_ntp_server_options: "iburst"
+
+# Pools (opcional). Gera linhas "pool" além dos servers.
+linux_ntp_pools: []
+
+# Timezone do host ("" para não alterar)
+linux_ntp_timezone: "America/Sao_Paulo"
+
+# Redes autorizadas a receber tempo deste host (vazio = não serve tempo)
+linux_ntp_allow_networks: []
+
+# Correção abrupta inicial do relógio
+linux_ntp_makestep_threshold: 1.0
+linux_ntp_makestep_limit: 3
+
+# Sincroniza o RTC (relógio de hardware)
+linux_ntp_rtcsync: true
+
+linux_ntp_service_enabled: true
+linux_ntp_assert_supported: true

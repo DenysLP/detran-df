@@ -1,0 +1,30 @@
+---
+# defaults/main.yml — linux_checkup
+# Role de inventário/check-up READ-ONLY: não altera nada na máquina.
+# Roda antes das demais roles para saber o estado do host (updates, proxy,
+# agentes, tempo, etc.). Suporta RHEL, Debian e Ubuntu.
+
+# Famílias de SO aceitas pela validação (ansible_facts['os_family'])
+linux_checkup_supported_families:
+  - RedHat
+  - Debian
+
+# Atualiza o cache de metadados do gerenciador antes de contar updates.
+# (leitura de repositório; não instala nada). Deixe true para contagem precisa.
+linux_checkup_refresh_cache: true
+
+# Agentes a procurar no host (pacote + serviço). Ajuste conforme o parque.
+# Pacote ausente é reportado como "ausente" — não é erro.
+linux_checkup_agents:
+  - { name: "Zabbix Agent 2", package: "zabbix-agent2", service: "zabbix-agent2" }
+  - { name: "Zabbix Agent",   package: "zabbix-agent",  service: "zabbix-agent" }
+  - { name: "Filebeat",       package: "filebeat",       service: "filebeat" }
+  - { name: "Node Exporter",  package: "node_exporter",  service: "node_exporter" }
+  - { name: "CrowdStrike Falcon", package: "falcon-sensor", service: "falcon-sensor" }
+
+# Escrever também um relatório em arquivo no próprio host?
+# (única tarefa que escreve algo — desligada por padrão para manter 100% read-only)
+linux_checkup_write_report: false
+linux_checkup_report_path: "/var/log/linux_checkup.txt"
+
+linux_checkup_assert_supported: true

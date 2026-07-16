@@ -1,0 +1,32 @@
+---
+# meta/main.yml — linux_os_update
+galaxy_info:
+  role_name: linux_os_update
+  namespace: detrandf
+  author: DETRAN-DF — Infraestrutura
+  description: Atualização de SO (yum/dnf/dnf5/apt) em RHEL, Debian e Ubuntu com reboot controlado.
+  company: DETRAN-DF
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - linux
+    - update
+    - patching
+    - dnf
+    - apt
+    - aap
+
+dependencies: []

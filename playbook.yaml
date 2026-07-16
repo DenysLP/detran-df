@@ -1,0 +1,10 @@
+---
+- name: Hello World local test
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Print hello world message
+      ansible.builtin.debug:
+        msg: "Hello World from Ansible local execution!"

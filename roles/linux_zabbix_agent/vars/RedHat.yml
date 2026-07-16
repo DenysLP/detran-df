@@ -1,0 +1,6 @@
+---
+# vars/RedHat.yml — linux_zabbix_agent (RHEL e derivados)
+# Repositório RPM oficial do Zabbix; a URL usa a versão maior detectada do host.
+linux_zabbix_agent_repo_baseurl: >-
+  https://repo.zabbix.com/zabbix/{{ linux_zabbix_agent_major }}/rhel/{{ ansible_facts['distribution_major_version'] }}/$basearch/
+linux_zabbix_agent_repo_gpgkey: "https://repo.zabbix.com/RPM-GPG-KEY-ZABBIX-08EFA7DD"

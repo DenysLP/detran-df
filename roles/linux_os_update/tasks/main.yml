@@ -1,0 +1,159 @@
+---
+# tasks/main.yml — linux_os_update
+# Detecta a família do SO e o gerenciador de pacotes:
+#   RedHat: yum (RHEL 7) | dnf (RHEL 8/9) | dnf5 (RHEL 10)
+#   Debian: apt (Debian/Ubuntu)
+
+- name: Validar que o SO é suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in linux_os_update_supported_families
+    fail_msg: >-
+      SO não suportado ({{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}; família
+      {{ ansible_facts['os_family'] }}). Aceitos:
+      {{ linux_os_update_supported_families | join(', ') }}.
+    success_msg: >-
+      SO validado ({{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_major_version'] }},
+      pkg_mgr={{ ansible_facts['pkg_mgr'] }}).
+  when: linux_os_update_assert_supported | bool
+
+# --- RHEL 7 (yum) ---
+- name: "Atualizar via yum (RHEL 7)"
+  when: ansible_facts['pkg_mgr'] == 'yum'
+  block:
+    - name: Aplicar atualizações (yum)
+      ansible.builtin.yum:
+        name: "*"
+        state: latest
+        security: "{{ linux_os_update_scope == 'security' }}"
+        exclude: "{{ linux_os_update_exclude }}"
+        update_cache: "{{ linux_os_update_update_cache }}"
+      register: linux_os_update_yum
+    - name: Remover pacotes órfãos (yum autoremove)
+      ansible.builtin.yum:
+        autoremove: true
+      when: linux_os_update_autoremove | bool
+
+# --- RHEL 8/9 (dnf) ---
+- name: "Atualizar via dnf (RHEL 8/9)"
+  when: ansible_facts['pkg_mgr'] == 'dnf'
+  block:
+    - name: Aplicar atualizações (dnf)
+      ansible.builtin.dnf:
+        name: "*"
+        state: latest
+        security: "{{ linux_os_update_scope == 'security' }}"
+        exclude: "{{ linux_os_update_exclude }}"
+        update_cache: "{{ linux_os_update_update_cache }}"
+      register: linux_os_update_dnf
+    - name: Remover pacotes órfãos (dnf autoremove)
+      ansible.builtin.dnf:
+        autoremove: true
+      when: linux_os_update_autoremove | bool
+
+# --- RHEL 10 (dnf5) ---
+- name: "Atualizar via dnf5 (RHEL 10)"
+  when: ansible_facts['pkg_mgr'] == 'dnf5'
+  block:
+    - name: Aplicar atualizações (dnf5)
+      ansible.builtin.dnf5:
+        name: "*"
+        state: latest
+        security: "{{ linux_os_update_scope == 'security' }}"
+        exclude: "{{ linux_os_update_exclude }}"
+        update_cache: "{{ linux_os_update_update_cache }}"
+      register: linux_os_update_dnf5
+    - name: Remover pacotes órfãos (dnf5 autoremove)
+      ansible.builtin.dnf5:
+        autoremove: true
+      when: linux_os_update_autoremove | bool
+
+# --- Debian / Ubuntu (apt) ---
+- name: "Atualizar via apt (Debian/Ubuntu)"
+  when: ansible_facts['os_family'] == 'Debian'
+  block:
+    - name: Atualizar cache do apt
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: linux_os_update_update_cache | bool
+
+    - name: Aplicar todas as atualizações (apt dist-upgrade)
+      ansible.builtin.apt:
+        upgrade: dist
+      register: linux_os_update_apt
+      when: linux_os_update_scope == 'all'
+
+    - name: Garantir unattended-upgrades instalado (escopo security)
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+      when: linux_os_update_scope == 'security'
+
+    - name: Aplicar apenas atualizações de segurança (unattended-upgrade)
+      ansible.builtin.command: unattended-upgrade -v
+      register: linux_os_update_apt_sec
+      changed_when: >-
+        ('Packages that were upgraded' in (linux_os_update_apt_sec.stdout | default('')))
+        or ('Installing' in (linux_os_update_apt_sec.stdout | default('')))
+      when: linux_os_update_scope == 'security'
+
+    - name: Remover pacotes órfãos (apt autoremove)
+      ansible.builtin.apt:
+        autoremove: true
+      when: linux_os_update_autoremove | bool
+
+# --- Consolida o resultado "changed" independente da família/gerenciador ---
+- name: Consolidar se houve alteração
+  ansible.builtin.set_fact:
+    linux_os_update_changed: >-
+      {{ (linux_os_update_yum.changed | default(false))
+         or (linux_os_update_dnf.changed | default(false))
+         or (linux_os_update_dnf5.changed | default(false))
+         or (linux_os_update_apt.changed | default(false))
+         or (linux_os_update_apt_sec.changed | default(false)) }}
+
+# --- Detecção de necessidade de reboot (modo auto) ---
+- name: "(RedHat) Verificar se um reboot é necessário"
+  ansible.builtin.command: needs-restarting -r
+  register: linux_os_update_needs_restarting
+  changed_when: false
+  failed_when: false
+  when:
+    - linux_os_update_reboot == 'auto'
+    - ansible_facts['os_family'] == 'RedHat'
+
+- name: "(Debian) Verificar se um reboot é necessário"
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: linux_os_update_reboot_file
+  when:
+    - linux_os_update_reboot == 'auto'
+    - ansible_facts['os_family'] == 'Debian'
+
+- name: Consolidar necessidade de reboot
+  ansible.builtin.set_fact:
+    linux_os_update_reboot_required: >-
+      {{ (linux_os_update_needs_restarting.rc | default(0) == 1)
+         or (linux_os_update_reboot_file.stat.exists | default(false)) }}
+  when: linux_os_update_reboot == 'auto'
+
+- name: Reiniciar o host (reboot necessário / forçado)
+  ansible.builtin.reboot:
+    msg: "{{ linux_os_update_reboot_msg }}"
+    reboot_timeout: "{{ linux_os_update_reboot_timeout }}"
+  when: >-
+    (linux_os_update_reboot | string == 'true' and linux_os_update_changed | bool)
+    or
+    (linux_os_update_reboot == 'auto' and linux_os_update_reboot_required | default(false) | bool)
+
+- name: Resumo do update
+  ansible.builtin.debug:
+    msg: >-
+      familia={{ ansible_facts['os_family'] }} |
+      pkg_mgr={{ ansible_facts['pkg_mgr'] }} |
+      escopo={{ linux_os_update_scope }} |
+      alterou={{ linux_os_update_changed }} |
+      reboot={{ linux_os_update_reboot }}

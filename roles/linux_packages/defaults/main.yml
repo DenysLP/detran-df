@@ -1,0 +1,30 @@
+---
+# defaults/main.yml — linux_packages
+# Usa o módulo genérico ansible.builtin.package (resolve para dnf/yum/apt),
+# atendendo RHEL, Debian e Ubuntu. A baseline de pacotes (com os nomes corretos
+# de cada família) fica em vars/<os_family>.yml.
+
+# Famílias de SO aceitas pela validação (ansible_facts['os_family'])
+linux_packages_supported_families:
+  - RedHat
+  - Debian
+
+# Instala a baseline específica da família (vars/RedHat.yml, vars/Debian.yml)?
+linux_packages_manage_baseline: true
+
+# Pacotes adicionais a garantir instalados (use nomes válidos na distro alvo)
+linux_packages_install: []
+
+# Pacotes a remover
+linux_packages_remove: []
+
+# Grupos de pacotes (prefixo @), ex.: ["@Development Tools"].
+# Conceito específico de RHEL — ignorado em Debian/Ubuntu.
+linux_packages_groups: []
+
+# Estado dos pacotes instalados:
+#   present -> instala se faltar
+#   latest  -> instala e mantém na última versão
+linux_packages_state: present
+
+linux_packages_assert_supported: true

@@ -1,0 +1,33 @@
+---
+# meta/main.yml — linux_zabbix_agent
+galaxy_info:
+  role_name: linux_zabbix_agent
+  namespace: detrandf
+  author: DETRAN-DF — Infraestrutura
+  description: Instalação e configuração do zabbix-agent2 em RHEL, Debian e Ubuntu.
+  company: DETRAN-DF
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - linux
+    - zabbix
+    - monitoring
+    - agent
+    - aap
+
+# Requer ansible.posix (firewalld, RHEL) e community.general (ufw, Debian/Ubuntu)
+# quando linux_zabbix_agent_manage_firewall=true.
+dependencies: []

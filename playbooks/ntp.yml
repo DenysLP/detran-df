@@ -1,17 +1,17 @@
 ---
-# playbooks/ntp.yml — exemplo de uso da role rhel_ntp (RHEL 7/8/9/10)
+# playbooks/ntp.yml — exemplo de uso da role linux_ntp (RHEL / Debian / Ubuntu)
 
-- name: Configurar NTP (chrony) em hosts RHEL
-  hosts: rhel
+- name: Configurar NTP (chrony) em hosts Linux
+  hosts: linux
   become: true
   vars:
-    rhel_ntp_servers:
+    linux_ntp_servers:
       - a.st1.ntp.br
       - b.st1.ntp.br
       - c.st1.ntp.br
-    rhel_ntp_timezone: "America/Sao_Paulo"
+    linux_ntp_timezone: "America/Sao_Paulo"
     # Exemplo: este host também serve tempo para a rede interna do DETRAN-DF.
-    rhel_ntp_allow_networks:
+    linux_ntp_allow_networks:
       - 10.0.0.0/8
   roles:
-    - role: rhel_ntp
+    - role: linux_ntp

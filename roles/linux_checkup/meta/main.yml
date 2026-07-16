@@ -1,0 +1,31 @@
+---
+# meta/main.yml — linux_checkup
+galaxy_info:
+  role_name: linux_checkup
+  namespace: detrandf
+  author: DETRAN-DF — Infraestrutura
+  description: Check-up/inventário read-only do host (updates, proxy, agentes, tempo) em RHEL, Debian e Ubuntu.
+  company: DETRAN-DF
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "7"
+        - "8"
+        - "9"
+        - "10"
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+  galaxy_tags:
+    - linux
+    - checkup
+    - inventory
+    - audit
+    - aap
+
+dependencies: []

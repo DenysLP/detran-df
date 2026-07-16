@@ -1,0 +1,6 @@
+---
+# handlers/main.yml — linux_ntp
+- name: Restart chrony
+  ansible.builtin.service:
+    name: "{{ linux_ntp_service }}"
+    state: restarted

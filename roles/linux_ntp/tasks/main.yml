@@ -1,0 +1,48 @@
+---
+# tasks/main.yml — linux_ntp
+# NTP via chrony. Detecta a família do SO (RedHat/Debian) e carrega de vars/
+# o nome do pacote, do serviço e os caminhos corretos antes de agir.
+
+- name: Validar que o SO é suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in linux_ntp_supported_families
+    fail_msg: >-
+      SO não suportado ({{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}; família
+      {{ ansible_facts['os_family'] }}). Aceitos:
+      {{ linux_ntp_supported_families | join(', ') }}.
+    success_msg: >-
+      SO validado ({{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_major_version'] }}, família
+      {{ ansible_facts['os_family'] }}).
+  when: linux_ntp_assert_supported | bool
+
+- name: "Carregar variáveis da família ({{ ansible_facts['os_family'] }})"
+  ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
+
+- name: Instalar o chrony
+  ansible.builtin.package:
+    name: "{{ linux_ntp_package }}"
+    state: present
+
+- name: Definir timezone do host
+  community.general.timezone:
+    name: "{{ linux_ntp_timezone }}"
+  when: linux_ntp_timezone | length > 0
+
+- name: Configurar o chrony.conf
+  ansible.builtin.template:
+    src: chrony.conf.j2
+    dest: "{{ linux_ntp_conf_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Restart chrony
+
+- name: Habilitar e iniciar o serviço do chrony
+  ansible.builtin.service:
+    name: "{{ linux_ntp_service }}"
+    state: started
+    enabled: "{{ linux_ntp_service_enabled | bool }}"

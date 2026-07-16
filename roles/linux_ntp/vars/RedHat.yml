@@ -1,0 +1,7 @@
+---
+# vars/RedHat.yml — linux_ntp (RHEL e derivados: 7/8/9/10)
+linux_ntp_package: chrony
+linux_ntp_service: chronyd
+linux_ntp_conf_path: /etc/chrony.conf
+linux_ntp_driftfile: /var/lib/chrony/drift
+linux_ntp_logdir: /var/log/chrony

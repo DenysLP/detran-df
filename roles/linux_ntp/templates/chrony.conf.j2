@@ -1,0 +1,27 @@
+{{ ansible_managed | comment }}
+# Gerenciado pela role Ansible linux_ntp — NÃO edite manualmente.
+
+{% for server in linux_ntp_servers %}
+server {{ server }} {{ linux_ntp_server_options }}
+{% endfor %}
+{% for pool in linux_ntp_pools %}
+pool {{ pool }} {{ linux_ntp_server_options }}
+{% endfor %}
+
+# Corrige o relógio de forma abrupta nas primeiras medições, se o desvio for grande.
+makestep {{ linux_ntp_makestep_threshold }} {{ linux_ntp_makestep_limit }}
+
+{% if linux_ntp_rtcsync %}
+# Sincroniza o relógio de hardware (RTC) com o relógio do sistema.
+rtcsync
+{% endif %}
+
+# Registra a taxa de deriva do relógio para acelerar sincronizações futuras.
+driftfile {{ linux_ntp_driftfile }}
+
+# Diretório de logs do chrony.
+logdir {{ linux_ntp_logdir }}
+
+{% for network in linux_ntp_allow_networks %}
+allow {{ network }}
+{% endfor %}

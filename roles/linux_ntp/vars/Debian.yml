@@ -1,0 +1,8 @@
+---
+# vars/Debian.yml — linux_ntp (Debian e Ubuntu)
+# No Debian/Ubuntu o serviço se chama "chrony" e o conf fica sob /etc/chrony/.
+linux_ntp_package: chrony
+linux_ntp_service: chrony
+linux_ntp_conf_path: /etc/chrony/chrony.conf
+linux_ntp_driftfile: /var/lib/chrony/chrony.drift
+linux_ntp_logdir: /var/log/chrony

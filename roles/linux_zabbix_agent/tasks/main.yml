@@ -1,0 +1,119 @@
+---
+# tasks/main.yml — linux_zabbix_agent
+# Detecta a família do SO e configura o repositório do Zabbix do jeito certo:
+#   RedHat -> repositório RPM (yum_repository) + firewalld
+#   Debian -> repositório APT (chave GPG + apt_repository) + ufw
+
+- name: Validar que o SO é suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in linux_zabbix_agent_supported_families
+    fail_msg: >-
+      SO não suportado ({{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}; família
+      {{ ansible_facts['os_family'] }}). Aceitos:
+      {{ linux_zabbix_agent_supported_families | join(', ') }}.
+  when: linux_zabbix_agent_assert_supported | bool
+
+- name: "Carregar variáveis da família ({{ ansible_facts['os_family'] }})"
+  ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
+
+# --- Repositório RPM (RHEL) ---
+- name: Configurar o repositório RPM do Zabbix (RHEL)
+  ansible.builtin.yum_repository:
+    name: "zabbix"
+    description: "Zabbix Official Repository {{ linux_zabbix_agent_major }} (RHEL {{ ansible_facts['distribution_major_version'] }})"
+    baseurl: "{{ linux_zabbix_agent_repo_baseurl }}"
+    gpgkey: "{{ linux_zabbix_agent_repo_gpgkey }}"
+    gpgcheck: "{{ linux_zabbix_agent_repo_gpgcheck | bool }}"
+    enabled: true
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - linux_zabbix_agent_manage_repo | bool
+
+# --- Repositório APT (Debian/Ubuntu) ---
+- name: Garantir o diretório de keyrings do apt (Debian/Ubuntu)
+  ansible.builtin.file:
+    path: "{{ linux_zabbix_agent_apt_keyring | dirname }}"
+    state: directory
+    mode: "0755"
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - linux_zabbix_agent_manage_repo | bool
+
+- name: Baixar a chave de assinatura do Zabbix (Debian/Ubuntu)
+  ansible.builtin.get_url:
+    url: "{{ linux_zabbix_agent_repo_gpgkey }}"
+    dest: "{{ linux_zabbix_agent_apt_keyring }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - linux_zabbix_agent_manage_repo | bool
+
+- name: Adicionar o repositório APT do Zabbix (Debian/Ubuntu)
+  ansible.builtin.apt_repository:
+    repo: >-
+      deb [signed-by={{ linux_zabbix_agent_apt_keyring }}]
+      {{ linux_zabbix_agent_repo_baseurl }}
+      {{ ansible_facts['distribution_release'] }} main
+    filename: zabbix
+    state: present
+    update_cache: true
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - linux_zabbix_agent_manage_repo | bool
+
+- name: Instalar o agente Zabbix
+  ansible.builtin.package:
+    name: "{{ linux_zabbix_agent_package }}"
+    state: present
+
+- name: Provisionar arquivo PSK (TLS)
+  ansible.builtin.copy:
+    content: "{{ linux_zabbix_agent_tls_psk_secret }}"
+    dest: "{{ linux_zabbix_agent_tls_psk_file }}"
+    owner: zabbix
+    group: zabbix
+    mode: "0600"
+  when:
+    - linux_zabbix_agent_tls_connect == 'psk' or linux_zabbix_agent_tls_accept == 'psk'
+    - linux_zabbix_agent_tls_psk_secret | length > 0
+  no_log: true
+  notify: Restart zabbix agent
+
+- name: Configurar o agente Zabbix
+  ansible.builtin.template:
+    src: zabbix_agent2.conf.j2
+    dest: "/etc/zabbix/{{ 'zabbix_agent2.conf' if 'agent2' in linux_zabbix_agent_package else 'zabbix_agentd.conf' }}"
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Restart zabbix agent
+
+- name: Abrir a porta do agente no firewalld (RHEL)
+  ansible.posix.firewalld:
+    port: "{{ linux_zabbix_agent_listen_port }}/tcp"
+    permanent: true
+    immediate: true
+    state: enabled
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - linux_zabbix_agent_manage_firewall | bool
+
+- name: Abrir a porta do agente no ufw (Debian/Ubuntu)
+  community.general.ufw:
+    rule: allow
+    port: "{{ linux_zabbix_agent_listen_port }}"
+    proto: tcp
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - linux_zabbix_agent_manage_firewall | bool
+
+- name: Habilitar e iniciar o serviço do agente
+  ansible.builtin.service:
+    name: "{{ linux_zabbix_agent_service }}"
+    state: started
+    enabled: "{{ linux_zabbix_agent_service_enabled | bool }}"

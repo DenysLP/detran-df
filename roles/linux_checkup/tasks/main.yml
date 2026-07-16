@@ -1,0 +1,186 @@
+---
+# tasks/main.yml — linux_checkup
+# Inventário/check-up READ-ONLY do host (RHEL / Debian / Ubuntu).
+# Nada aqui altera o sistema: comandos usam changed_when:false e as
+# checagens de pacote/serviço usam package_facts/service_facts.
+
+- name: Validar que o SO é suportado
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] in linux_checkup_supported_families
+    fail_msg: >-
+      SO não suportado ({{ ansible_facts['distribution'] }}
+      {{ ansible_facts['distribution_version'] }}; família
+      {{ ansible_facts['os_family'] }}). Aceitos:
+      {{ linux_checkup_supported_families | join(', ') }}.
+  when: linux_checkup_assert_supported | bool
+
+- name: "Carregar variáveis da família ({{ ansible_facts['os_family'] }})"
+  ansible.builtin.include_vars: "{{ ansible_facts['os_family'] }}.yml"
+
+# ------------------------------------------------------------------ #
+# 1) Atualizações pendentes
+# ------------------------------------------------------------------ #
+- name: "(RedHat) Atualizar metadados do gerenciador"
+  ansible.builtin.command: "{{ ansible_facts['pkg_mgr'] }} -q makecache"
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - linux_checkup_refresh_cache | bool
+
+- name: "(RedHat) Verificar atualizações pendentes"
+  ansible.builtin.command: "{{ ansible_facts['pkg_mgr'] }} -q check-update"
+  register: linux_checkup_rh_updates
+  changed_when: false
+  failed_when: false   # rc 100 = há updates; erro de repo não deve derrubar o check-up
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: "(RedHat) Verificar atualizações de segurança"
+  ansible.builtin.command: "{{ ansible_facts['pkg_mgr'] }} -q check-update --security"
+  register: linux_checkup_rh_sec
+  changed_when: false
+  failed_when: false   # --security pode não existir (ex.: RHEL7 sem plugin)
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: "(Debian) Atualizar cache do apt"
+  ansible.builtin.command: apt-get update
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - linux_checkup_refresh_cache | bool
+
+- name: "(Debian) Simular upgrade para listar pendências"
+  ansible.builtin.command: apt-get -s -o Debug::NoLocking=true dist-upgrade
+  environment:
+    LANG: C
+  register: linux_checkup_deb_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Consolidar contagem de atualizações
+  ansible.builtin.set_fact:
+    linux_checkup_updates_count: >-
+      {{ (linux_checkup_rh_updates.stdout_lines | select('match', '^\S+\s+\S+\s+\S+$') | list | length)
+         if ansible_facts['os_family'] == 'RedHat'
+         else (linux_checkup_deb_updates.stdout_lines | select('match', '^Inst ') | list | length) }}
+    linux_checkup_security_count: >-
+      {{ (linux_checkup_rh_sec.stdout_lines | select('match', '^\S+\s+\S+\s+\S+$') | list | length)
+         if ansible_facts['os_family'] == 'RedHat'
+         else (linux_checkup_deb_updates.stdout_lines | select('match', '^Inst ') | select('search', '(?i)security') | list | length) }}
+
+# ------------------------------------------------------------------ #
+# 2) Reboot pendente
+# ------------------------------------------------------------------ #
+- name: "(RedHat) Checar necessidade de reboot"
+  ansible.builtin.command: needs-restarting -r
+  register: linux_checkup_rh_reboot
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: "(Debian) Checar necessidade de reboot"
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: linux_checkup_deb_reboot
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Consolidar necessidade de reboot
+  ansible.builtin.set_fact:
+    linux_checkup_reboot_required: >-
+      {{ (linux_checkup_rh_reboot.rc | default(0) == 1)
+         or (linux_checkup_deb_reboot.stat.exists | default(false)) }}
+
+# ------------------------------------------------------------------ #
+# 3) Proxy configurado?
+# ------------------------------------------------------------------ #
+- name: Procurar configuração de proxy nos arquivos de sistema
+  ansible.builtin.shell: >-
+    grep -RiEn 'https?_proxy|Acquire::http.*Proxy|^\s*proxy\s*=' {{ linux_checkup_proxy_scan_paths | join(' ') }} 2>/dev/null
+    | grep -vE '^\s*#' || true
+  register: linux_checkup_proxy_grep
+  changed_when: false
+
+- name: Consolidar situação de proxy
+  ansible.builtin.set_fact:
+    linux_checkup_proxy_env:
+      http_proxy: "{{ ansible_env.http_proxy | default(ansible_env.HTTP_PROXY | default('')) }}"
+      https_proxy: "{{ ansible_env.https_proxy | default(ansible_env.HTTPS_PROXY | default('')) }}"
+      no_proxy: "{{ ansible_env.no_proxy | default(ansible_env.NO_PROXY | default('')) }}"
+    linux_checkup_proxy_files_hits: "{{ linux_checkup_proxy_grep.stdout_lines | default([]) }}"
+
+# ------------------------------------------------------------------ #
+# 4) Agentes instalados (pacote + serviço)
+# ------------------------------------------------------------------ #
+- name: Coletar fatos de pacotes instalados
+  ansible.builtin.package_facts:
+    manager: auto
+
+- name: Coletar fatos de serviços
+  ansible.builtin.service_facts:
+
+- name: Montar relatório de agentes
+  ansible.builtin.set_fact:
+    linux_checkup_agents_report: "{{ linux_checkup_agents_report | default([]) + [line] }}"
+  loop: "{{ linux_checkup_agents }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    pkg_present: "{{ item.package in ansible_facts.packages }}"
+    svc: "{{ ansible_facts.services[item.service ~ '.service']
+             | default(ansible_facts.services[item.service] | default({})) }}"
+    line: >-
+      {{ item.name }} [{{ item.package }}]:
+      {{ ('instalado v' ~ ansible_facts.packages[item.package][0].version) if pkg_present else 'AUSENTE' }}
+      | serviço: {{ svc.state | default('n/a') }}{{ ' (' ~ svc.status ~ ')' if svc.status is defined else '' }}
+
+# ------------------------------------------------------------------ #
+# 5) Sincronização de tempo (NTP) — cross-OS via systemd
+# ------------------------------------------------------------------ #
+- name: Checar sincronização de tempo (NTP)
+  ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+  register: linux_checkup_ntp
+  changed_when: false
+  failed_when: false
+
+# ------------------------------------------------------------------ #
+# 6) Inventário geral + relatório
+# ------------------------------------------------------------------ #
+- name: Consolidar dados de disco (partição raiz)
+  ansible.builtin.set_fact:
+    linux_checkup_root_fs: "{{ ansible_facts.mounts | selectattr('mount', 'equalto', '/') | first | default({}) }}"
+
+- name: Montar relatório final do check-up
+  ansible.builtin.set_fact:
+    linux_checkup_report:
+      - "===================== CHECK-UP: {{ inventory_hostname }} ({{ ansible_facts.default_ipv4.address | default('sem ipv4') }}) ====================="
+      - "SO............: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }} ({{ ansible_facts.os_family }}) | kernel {{ ansible_facts.kernel }} | pkg_mgr {{ ansible_facts.pkg_mgr }}"
+      - "Host.........: {{ ansible_facts.fqdn }} | uptime {{ (ansible_facts.uptime_seconds // 3600) }}h | timezone {{ ansible_facts.date_time.tz }}"
+      - "CPU/RAM......: {{ ansible_facts.processor_vcpus | default(ansible_facts.processor_cores) }} vCPU | {{ ansible_facts.memtotal_mb }} MB RAM ({{ ansible_facts.memfree_mb }} MB livre)"
+      - "Disco / .....: {{ ((linux_checkup_root_fs.size_available | default(0)) / 1073741824) | round(1) }} GB livres de {{ ((linux_checkup_root_fs.size_total | default(0)) / 1073741824) | round(1) }} GB"
+      - "SELinux......: {{ ansible_facts.selinux.status | default('n/a') }}{{ ' (' ~ ansible_facts.selinux.mode ~ ')' if ansible_facts.selinux.mode is defined else '' }}"
+      - "--- ATUALIZAÇÕES ---"
+      - "Pendentes....: {{ linux_checkup_updates_count }} (segurança: {{ linux_checkup_security_count }})"
+      - "Reboot pend..: {{ linux_checkup_reboot_required }}"
+      - "NTP synced...: {{ linux_checkup_ntp.stdout | default('n/a') }}"
+      - "--- PROXY ---"
+      - "Env..........: http={{ linux_checkup_proxy_env.http_proxy or '(vazio)' }} | https={{ linux_checkup_proxy_env.https_proxy or '(vazio)' }} | no_proxy={{ linux_checkup_proxy_env.no_proxy or '(vazio)' }}"
+      - "Arquivos.....: {{ linux_checkup_proxy_files_hits if linux_checkup_proxy_files_hits | length > 0 else 'nenhum proxy em arquivos de config' }}"
+      - "--- AGENTES ---"
+      - "{{ linux_checkup_agents_report | join('\n') }}"
+      - "=========================================================================================="
+
+- name: Exibir relatório do check-up
+  ansible.builtin.debug:
+    msg: "{{ linux_checkup_report }}"
+
+- name: Gravar relatório em arquivo no host (opcional)
+  ansible.builtin.copy:
+    content: "{{ linux_checkup_report | join('\n') }}\n"
+    dest: "{{ linux_checkup_report_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: linux_checkup_write_report | bool

@@ -1,0 +1,10 @@
+---
+# vars/RedHat.yml — linux_packages (RHEL e derivados)
+# Baseline de pacotes com os nomes usados no RHEL.
+linux_packages_baseline:
+  - vim-enhanced
+  - wget
+  - curl
+  - tar
+  - unzip
+  - bash-completion
