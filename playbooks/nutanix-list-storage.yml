@@ -1,0 +1,100 @@
+---
+# playbooks/nutanix-list-storage.yml
+# Lista os storage containers do Nutanix com uso/capacidade (%) por container.
+# READ-ONLY, API v3 (groups) via ansible.builtin.uri. Útil antes de provisionar
+# uma VM, para escolher/validar o container de destino.
+#
+#   nutanix_host / nutanix_port (9440) / nutanix_username / nutanix_password
+#   nutanix_storage_hide_system (default true) -> oculta containers de sistema
+
+- name: Listar storage containers do Nutanix (uso %)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    nutanix_port: 9440
+    nutanix_validate_certs: false
+    nutanix_storage_hide_system: true
+    # Padrões de nome considerados "de sistema" (ocultados por padrão)
+    nutanix_storage_system_patterns:
+      - "NutanixManagementShare"
+      - "SelfServiceContainer"
+      - "default-container-"
+      - "Nutanix_ntxfiles_ctr"
+      - "objects"
+
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: "{{ nutanix_username }}"
+      url_password: "{{ nutanix_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ nutanix_validate_certs }}"
+      body_format: json
+      return_content: true
+
+  tasks:
+    - name: Validar credenciais
+      ansible.builtin.assert:
+        that:
+          - nutanix_host is defined and (nutanix_host | string | length) > 0
+          - nutanix_username is defined and nutanix_password is defined
+        fail_msg: "Faltam nutanix_host / nutanix_username / nutanix_password."
+        quiet: true
+
+    - name: Consultar storage containers
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/nutanix/v3/groups"
+        method: POST
+        body:
+          entity_type: storage_container
+          group_member_attributes:
+            - { attribute: "container_name" }
+            - { attribute: "cluster_name" }
+            - { attribute: "storage.capacity_bytes" }
+            - { attribute: "storage.usage_bytes" }
+            - { attribute: "storage.free_bytes" }
+        status_code: 200
+      register: nutanix_sc
+
+    - name: Montar lista de containers
+      ansible.builtin.set_fact:
+        nutanix_containers: "{{ nutanix_containers | default([]) + [linha] }}"
+      loop: "{{ nutanix_sc.json.group_results[0].entity_results }}"
+      loop_control:
+        loop_var: ent
+        label: "{{ row['container_name'] | default('?') }}"
+      vars:
+        row: >-
+          {{ dict(ent.data | map(attribute='name') | list
+                  | zip(ent.data | map(attribute='values') | map('first')
+                        | map(attribute='values') | map('first') | list)) }}
+        cap: "{{ (row['storage.capacity_bytes'] | default(0)) | int }}"
+        use: "{{ (row['storage.usage_bytes'] | default(0)) | int }}"
+        linha:
+          container: "{{ row['container_name'] | default('?') }}"
+          cluster: "{{ row['cluster_name'] | default('?') }}"
+          uso_pct: "{{ ((use | int) / (cap | int) * 100) | round(1) if (cap | int) > 0 else 0 }}"
+          usado_gb: "{{ ((use | int) / 1000000000) | round(1) }}"
+          capacidade_tb: "{{ ((cap | int) / 1000000000000) | round(1) }}"
+          sistema: "{{ nutanix_storage_system_patterns | select('in', row['container_name'] | default('')) | list | length > 0 }}"
+
+    - name: Filtrar containers de sistema (opcional)
+      ansible.builtin.set_fact:
+        nutanix_containers_exibir: >-
+          {{ nutanix_containers | rejectattr('sistema') | list
+             if nutanix_storage_hide_system | bool else nutanix_containers }}
+
+    - name: Relatório — storage containers
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['===== STORAGE CONTAINERS (' ~ nutanix_host ~ ') — ' ~ (nutanix_containers_exibir | length) ~ ' de ' ~ (nutanix_containers | length) ~ ' ====='] +
+             (nutanix_containers_exibir | sort(attribute='cluster')
+              | map('to_json') | list) }}
+
+    - name: Publicar resultado (set_stats)
+      ansible.builtin.set_stats:
+        data:
+          nutanix_storage:
+            host: "{{ nutanix_host }}"
+            containers: "{{ nutanix_containers_exibir }}"
+            total: "{{ nutanix_containers | length }}"

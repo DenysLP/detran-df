@@ -1,0 +1,76 @@
+---
+# playbooks/nutanix-check-vm-name.yml
+# GUARD de pré-criação: verifica se já existe uma VM com um NOME específico ANTES
+# de criar uma nova — evita duplicidade. READ-ONLY, API v3 (vms/list + filter).
+#
+#   nutanix_vm_name  -> nome da VM a verificar (obrigatório)
+#   nutanix_vm_name_must_be_free (default true) -> falha o play se já existir (gate)
+
+- name: Verificar duplicidade de nome de VM no Nutanix
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    nutanix_port: 9440
+    nutanix_validate_certs: false
+    nutanix_vm_name_must_be_free: true
+
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: "{{ nutanix_username }}"
+      url_password: "{{ nutanix_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ nutanix_validate_certs }}"
+      body_format: json
+      return_content: true
+
+  tasks:
+    - name: Validar parâmetros
+      ansible.builtin.assert:
+        that:
+          - nutanix_host is defined and (nutanix_host | string | length) > 0
+          - nutanix_username is defined and nutanix_password is defined
+          - nutanix_vm_name is defined and (nutanix_vm_name | string | length) > 0
+        fail_msg: "Faltam credenciais ou nutanix_vm_name."
+        quiet: true
+
+    - name: "Consultar VMs com o nome '{{ nutanix_vm_name }}'"
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/nutanix/v3/vms/list"
+        method: POST
+        body:
+          kind: vm
+          filter: "vm_name=={{ nutanix_vm_name }}"
+          length: 20
+        status_code: 200
+      register: nutanix_vmq
+
+    - name: Consolidar resultado
+      ansible.builtin.set_fact:
+        nutanix_vm_qtd: "{{ nutanix_vmq.json.metadata.total_matches | default(0) }}"
+        nutanix_vm_existe: "{{ (nutanix_vmq.json.metadata.total_matches | default(0) | int) > 0 }}"
+        nutanix_vm_uuids: "{{ nutanix_vmq.json.entities | default([]) | map(attribute='metadata.uuid') | list }}"
+
+    - name: Relatório
+      ansible.builtin.debug:
+        msg: >-
+          VM '{{ nutanix_vm_name }}':
+          {{ 'JÁ EXISTE (' ~ nutanix_vm_qtd ~ ') — nome indisponível, uuids: ' ~ (nutanix_vm_uuids | join(', '))
+             if nutanix_vm_existe
+             else 'nome LIVRE — OK para criar' }}
+
+    - name: Publicar resultado (set_stats)
+      ansible.builtin.set_stats:
+        data:
+          nutanix_check_vm_name:
+            vm_name: "{{ nutanix_vm_name }}"
+            existe: "{{ nutanix_vm_existe }}"
+            quantidade: "{{ nutanix_vm_qtd }}"
+            uuids: "{{ nutanix_vm_uuids }}"
+
+    - name: Falhar se o nome já está em uso (gate)
+      ansible.builtin.fail:
+        msg: "Já existe VM com o nome '{{ nutanix_vm_name }}' ({{ nutanix_vm_qtd }}) — abortando para evitar duplicidade."
+      when:
+        - nutanix_vm_name_must_be_free | bool
+        - nutanix_vm_existe

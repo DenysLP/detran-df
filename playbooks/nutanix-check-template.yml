@@ -1,0 +1,72 @@
+---
+# playbooks/nutanix-check-template.yml
+# GUARD de pré-criação: verifica se um TEMPLATE existe no Nutanix ANTES de criar
+# uma VM a partir dele — evita falha na criação por template inexistente.
+# READ-ONLY. Endpoint VMM v4.0.a1 (o que este Prism Central expõe).
+#
+#   nutanix_template_name  -> nome do template a verificar (obrigatório)
+#   nutanix_template_required (default true) -> falha o play se não existir (gate)
+
+- name: Verificar existência de template no Nutanix
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    nutanix_port: 9440
+    nutanix_validate_certs: false
+    nutanix_template_required: true
+
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: "{{ nutanix_username }}"
+      url_password: "{{ nutanix_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ nutanix_validate_certs }}"
+      body_format: json
+      return_content: true
+
+  tasks:
+    - name: Validar parâmetros
+      ansible.builtin.assert:
+        that:
+          - nutanix_host is defined and (nutanix_host | string | length) > 0
+          - nutanix_username is defined and nutanix_password is defined
+          - nutanix_template_name is defined and (nutanix_template_name | string | length) > 0
+        fail_msg: "Faltam credenciais ou nutanix_template_name."
+        quiet: true
+
+    - name: "Consultar template '{{ nutanix_template_name }}'"
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/vmm/v4.0.a1/content/templates?$filter={{ filtro | urlencode }}"
+        method: GET
+        status_code: 200
+      vars:
+        filtro: "templateName eq '{{ nutanix_template_name }}'"
+      register: nutanix_tpl
+
+    - name: Consolidar resultado
+      ansible.builtin.set_fact:
+        nutanix_template_encontrado: "{{ (nutanix_tpl.json.metadata.totalAvailableResults | default(0) | int) > 0 }}"
+        nutanix_template_qtd: "{{ nutanix_tpl.json.metadata.totalAvailableResults | default(0) }}"
+
+    - name: Relatório
+      ansible.builtin.debug:
+        msg: >-
+          Template '{{ nutanix_template_name }}':
+          {{ 'ENCONTRADO (' ~ nutanix_template_qtd ~ ') — OK para criar VM'
+             if nutanix_template_encontrado
+             else 'NÃO ENCONTRADO — criar VM a partir dele falharia' }}
+
+    - name: Publicar resultado (set_stats)
+      ansible.builtin.set_stats:
+        data:
+          nutanix_check_template:
+            template: "{{ nutanix_template_name }}"
+            encontrado: "{{ nutanix_template_encontrado }}"
+
+    - name: Falhar se o template não existe (gate)
+      ansible.builtin.fail:
+        msg: "Template '{{ nutanix_template_name }}' não existe no Nutanix — abortando antes de criar a VM."
+      when:
+        - nutanix_template_required | bool
+        - not nutanix_template_encontrado

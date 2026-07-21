@@ -1,0 +1,88 @@
+---
+# playbooks/nutanix-list-nodes.yml
+# Lista os nodes (hosts) do Nutanix com uso de CPU/memória (%) e capacidade livre,
+# para escolher onde há folga para criar novas VMs. READ-ONLY, API v3 (groups).
+#
+#   nutanix_host / nutanix_port (9440) / nutanix_username / nutanix_password
+
+- name: Listar nodes do Nutanix (capacidade % para criar VMs)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    nutanix_port: 9440
+    nutanix_validate_certs: false
+
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: "{{ nutanix_username }}"
+      url_password: "{{ nutanix_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ nutanix_validate_certs }}"
+      body_format: json
+      return_content: true
+
+  tasks:
+    - name: Validar credenciais
+      ansible.builtin.assert:
+        that:
+          - nutanix_host is defined and (nutanix_host | string | length) > 0
+          - nutanix_username is defined and nutanix_password is defined
+        fail_msg: "Faltam nutanix_host / nutanix_username / nutanix_password."
+        quiet: true
+
+    - name: Consultar hosts (nodes)
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/nutanix/v3/groups"
+        method: POST
+        body:
+          entity_type: host
+          group_member_attributes:
+            - { attribute: "node_name" }
+            - { attribute: "cluster_name" }
+            - { attribute: "num_cpu_cores" }
+            - { attribute: "hypervisor_cpu_usage_ppm" }
+            - { attribute: "memory_size_bytes" }
+            - { attribute: "hypervisor_memory_usage_ppm" }
+            - { attribute: "num_vms" }
+        status_code: 200
+      register: nutanix_hosts
+
+    - name: Montar lista de nodes
+      ansible.builtin.set_fact:
+        nutanix_nodes: "{{ nutanix_nodes | default([]) + [linha] }}"
+      loop: "{{ nutanix_hosts.json.group_results[0].entity_results }}"
+      loop_control:
+        loop_var: ent
+        label: "{{ row['node_name'] | default('?') }}"
+      vars:
+        row: >-
+          {{ dict(ent.data | map(attribute='name') | list
+                  | zip(ent.data | map(attribute='values') | map('first')
+                        | map(attribute='values') | map('first') | list)) }}
+        cpu_pct: "{{ ((row['hypervisor_cpu_usage_ppm'] | default(0)) | int / 10000) | round(1) }}"
+        mem_pct: "{{ ((row['hypervisor_memory_usage_ppm'] | default(0)) | int / 10000) | round(1) }}"
+        linha:
+          node: "{{ row['node_name'] | default('?') }}"
+          cluster: "{{ row['cluster_name'] | default('?') }}"
+          cpu_cores: "{{ row['num_cpu_cores'] | default('?') }}"
+          cpu_uso_pct: "{{ cpu_pct }}"
+          cpu_livre_pct: "{{ (100 - (cpu_pct | float)) | round(1) }}"
+          mem_total_gb: "{{ ((row['memory_size_bytes'] | default(0)) | int / 1000000000) | round(0) | int }}"
+          mem_uso_pct: "{{ mem_pct }}"
+          mem_livre_pct: "{{ (100 - (mem_pct | float)) | round(1) }}"
+          num_vms: "{{ row['num_vms'] | default(0) }}"
+
+    - name: Relatório — nodes
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['===== NODES (' ~ nutanix_host ~ ') — ' ~ (nutanix_nodes | length) ~ ' nodes ====='] +
+             (nutanix_nodes | sort(attribute='cluster') | map('to_json') | list) }}
+
+    - name: Publicar resultado (set_stats)
+      ansible.builtin.set_stats:
+        data:
+          nutanix_nodes:
+            host: "{{ nutanix_host }}"
+            nodes: "{{ nutanix_nodes }}"
+            total: "{{ nutanix_nodes | length }}"

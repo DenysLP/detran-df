@@ -1,0 +1,128 @@
+---
+# playbooks/nutanix-healthcheck.yml
+# Health-check READ-ONLY do Nutanix (Prism Central): espaço de storage, uso de
+# CPU e memória por cluster, e existência de alertas críticos. Usa a API REST v3
+# via ansible.builtin.uri (sem dependência dos SDKs v4 — os módulos _v2 dão 404
+# neste Prism Central). Credenciais via Credencial do AAP / extra_vars / vault.
+#
+#   nutanix_host / nutanix_port (9440) / nutanix_username / nutanix_password
+
+- name: Health-check do Nutanix (storage, CPU/memória, alertas críticos)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    nutanix_port: 9440
+    nutanix_validate_certs: false
+    # Limiares (%). Acima disso o item é marcado como ALERTA.
+    nutanix_hc_storage_threshold: 85
+    nutanix_hc_cpu_threshold: 90
+    nutanix_hc_mem_threshold: 90
+    # Falhar o play (gate) se houver qualquer problema?
+    nutanix_hc_fail_on_issue: false
+
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: "{{ nutanix_username }}"
+      url_password: "{{ nutanix_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ nutanix_validate_certs }}"
+      body_format: json
+      return_content: true
+
+  tasks:
+    - name: Validar credenciais
+      ansible.builtin.assert:
+        that:
+          - nutanix_host is defined and (nutanix_host | string | length) > 0
+          - nutanix_username is defined and (nutanix_username | string | length) > 0
+          - nutanix_password is defined and (nutanix_password | string | length) > 0
+        fail_msg: "Faltam nutanix_host / nutanix_username / nutanix_password."
+        quiet: true
+
+    - name: Consultar métricas dos clusters (storage/CPU/memória)
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/nutanix/v3/groups"
+        method: POST
+        body:
+          entity_type: cluster
+          group_member_attributes:
+            - { attribute: "cluster_name" }
+            - { attribute: "storage.capacity_bytes" }
+            - { attribute: "storage.usage_bytes" }
+            - { attribute: "hypervisor_cpu_usage_ppm" }
+            - { attribute: "hypervisor_memory_usage_ppm" }
+        status_code: 200
+      register: nutanix_groups
+
+    - name: Montar métricas por cluster
+      ansible.builtin.set_fact:
+        nutanix_cluster_stats: "{{ nutanix_cluster_stats | default([]) + [linha] }}"
+      loop: "{{ nutanix_groups.json.group_results[0].entity_results }}"
+      loop_control:
+        loop_var: ent
+        label: "{{ row['cluster_name'] | default('?') }}"
+      vars:
+        row: >-
+          {{ dict(ent.data | map(attribute='name') | list
+                  | zip(ent.data | map(attribute='values') | map('first')
+                        | map(attribute='values') | map('first') | list)) }}
+        cap: "{{ (row['storage.capacity_bytes'] | default(0)) | int }}"
+        use: "{{ (row['storage.usage_bytes'] | default(0)) | int }}"
+        storage_pct: "{{ ((use | int) / (cap | int) * 100) | round(1) if (cap | int) > 0 else 0 }}"
+        cpu_pct: "{{ ((row['hypervisor_cpu_usage_ppm'] | default(0)) | int / 10000) | round(1) }}"
+        mem_pct: "{{ ((row['hypervisor_memory_usage_ppm'] | default(0)) | int / 10000) | round(1) }}"
+        linha:
+          cluster: "{{ row['cluster_name'] | default('?') }}"
+          storage_pct: "{{ storage_pct }}"
+          storage_livre_tb: "{{ (((cap | int) - (use | int)) / 1000000000000) | round(1) }}"
+          storage_total_tb: "{{ ((cap | int) / 1000000000000) | round(1) }}"
+          cpu_pct: "{{ cpu_pct }}"
+          mem_pct: "{{ mem_pct }}"
+          storage_ok: "{{ (storage_pct | float) < (nutanix_hc_storage_threshold | float) }}"
+          cpu_ok: "{{ (cpu_pct | float) < (nutanix_hc_cpu_threshold | float) }}"
+          mem_ok: "{{ (mem_pct | float) < (nutanix_hc_mem_threshold | float) }}"
+
+    - name: Consultar alertas críticos não resolvidos
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/nutanix/v3/alerts/list"
+        method: POST
+        body:
+          kind: alert
+          filter: "severity==critical;resolved==false"
+          length: 20
+        status_code: 200
+      register: nutanix_alerts
+
+    - name: Consolidar resultado
+      ansible.builtin.set_fact:
+        nutanix_alertas_criticos: "{{ nutanix_alerts.json.metadata.total_matches | default(0) }}"
+        nutanix_hc_problemas: >-
+          {{ (nutanix_cluster_stats | rejectattr('storage_ok') | list)
+             + (nutanix_cluster_stats | rejectattr('cpu_ok') | list)
+             + (nutanix_cluster_stats | rejectattr('mem_ok') | list) }}
+
+    - name: Relatório — health-check Nutanix
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['===== NUTANIX HEALTH-CHECK (' ~ nutanix_host ~ ') ====='] +
+             (nutanix_cluster_stats | map('to_json') | list) +
+             ['Alertas críticos (não resolvidos): ' ~ nutanix_alertas_criticos,
+              'VEREDICTO: ' ~ ('OK' if (nutanix_hc_problemas | length == 0 and (nutanix_alertas_criticos | int) == 0)
+                               else 'ATENÇÃO — ' ~ (nutanix_hc_problemas | length) ~ ' métrica(s) acima do limiar, ' ~ nutanix_alertas_criticos ~ ' alerta(s) crítico(s)')] }}
+
+    - name: Publicar resultado (set_stats)
+      ansible.builtin.set_stats:
+        data:
+          nutanix_healthcheck:
+            host: "{{ nutanix_host }}"
+            clusters: "{{ nutanix_cluster_stats }}"
+            alertas_criticos: "{{ nutanix_alertas_criticos }}"
+            ok: "{{ nutanix_hc_problemas | length == 0 and (nutanix_alertas_criticos | int) == 0 }}"
+
+    - name: Falhar se houver problema (gate opcional)
+      ansible.builtin.fail:
+        msg: "Health-check reprovado: {{ nutanix_hc_problemas | length }} métrica(s) acima do limiar, {{ nutanix_alertas_criticos }} alerta(s) crítico(s)."
+      when:
+        - nutanix_hc_fail_on_issue | bool
+        - (nutanix_hc_problemas | length > 0) or ((nutanix_alertas_criticos | int) > 0)

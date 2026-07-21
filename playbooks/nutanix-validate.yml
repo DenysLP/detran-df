@@ -1,0 +1,89 @@
+---
+# playbooks/nutanix-validate.yml
+# Valida a conexão com o provider Nutanix (Prism Central): autenticação +
+# conectividade, consultando os clusters. READ-ONLY, não altera nada.
+#
+# Credenciais: NUNCA hardcode. Injete via Credencial do AAP (custom credential
+# type Nutanix), extra_vars ou ansible-vault:
+#   nutanix_host      -> IP/host do Prism Central SEM a porta (ex.: 10.138.249.107)
+#   nutanix_port      -> porta da API (default 9440)
+#   nutanix_username  -> usuário
+#   nutanix_password  -> senha (secret)
+#
+# ATENÇÃO: nutanix_host é só o host/IP. Não inclua ":9440" — a porta vai em
+# nutanix_port; caso contrário a URL fica com a porta duplicada.
+#
+# Os módulos rodam na máquina de execução (localhost) chamando a API do Prism.
+
+- name: Validar conexão com o provider Nutanix (Prism Central)
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    nutanix_port: 9440
+    nutanix_validate_certs: false
+
+  tasks:
+    - name: Validar que as credenciais foram fornecidas
+      ansible.builtin.assert:
+        that:
+          - nutanix_host is defined and (nutanix_host | string | length) > 0
+          - nutanix_username is defined and (nutanix_username | string | length) > 0
+          - nutanix_password is defined and (nutanix_password | string | length) > 0
+        fail_msg: >-
+          Faltam variáveis de conexão (nutanix_host / nutanix_username /
+          nutanix_password). Injete via Credencial do AAP, extra_vars ou
+          ansible-vault — não coloque a senha no repositório.
+        quiet: true
+
+    - name: Testar conexão com o Prism Central
+      block:
+        # Usa a API v3 (ntnx_clusters_info), estável e amplamente suportada.
+        # Os módulos v4 (sufixo _v2) exigem os SDKs Python v4 na EE e uma versão
+        # da API v4 compatível com o Prism Central — nem todo PC expõe a v4.2.
+        - name: "Consultar clusters no Prism Central ({{ nutanix_host }}:{{ nutanix_port }})"
+          nutanix.ncp.ntnx_clusters_info:
+            nutanix_host: "{{ nutanix_host }}"
+            nutanix_port: "{{ nutanix_port }}"
+            nutanix_username: "{{ nutanix_username }}"
+            nutanix_password: "{{ nutanix_password }}"
+            validate_certs: "{{ nutanix_validate_certs }}"
+          register: nutanix_conexao
+
+        - name: Extrair nomes dos clusters
+          ansible.builtin.set_fact:
+            nutanix_clusters: "{{ nutanix_conexao.response.entities | default([]) | map(attribute='status.name') | select('string') | list }}"
+            nutanix_total: "{{ nutanix_conexao.response.metadata.total_matches | default(nutanix_conexao.response.entities | default([]) | length) }}"
+
+        - name: Relatório — conexão validada
+          ansible.builtin.debug:
+            msg:
+              - "===== NUTANIX: conexão OK ({{ nutanix_host }}:{{ nutanix_port }}) ====="
+              - "Usuário......: {{ nutanix_username }}"
+              - "validate_certs: {{ nutanix_validate_certs }}"
+              - "Clusters.....: {{ nutanix_total }}"
+              - "Nomes........: {{ nutanix_clusters }}"
+
+        - name: Publicar resultado (set_stats) para o Workflow
+          ansible.builtin.set_stats:
+            data:
+              validacao_nutanix:
+                host: "{{ nutanix_host }}"
+                status: "conectado"
+                total_clusters: "{{ nutanix_total }}"
+                clusters: "{{ nutanix_clusters }}"
+
+      rescue:
+        - name: Publicar resultado de falha (set_stats)
+          ansible.builtin.set_stats:
+            data:
+              validacao_nutanix:
+                host: "{{ nutanix_host }}"
+                status: "falha"
+                erro: "{{ ansible_failed_result.msg | default('erro desconhecido') }}"
+
+        - name: Falhar com mensagem clara
+          ansible.builtin.fail:
+            msg: >-
+              FALHA ao conectar no Nutanix {{ nutanix_host }} como
+              {{ nutanix_username }}: {{ ansible_failed_result.msg | default('erro desconhecido') }}

@@ -1,0 +1,120 @@
+---
+# playbooks/nutanix-list-templates.yml
+# Lista os "templates" do Nutanix = VM Templates (vmm v4.0.a1) + Imagens
+# (v3 images/list — DISK_IMAGE/ISO_IMAGE, que é o que se usa para criar VMs
+# neste Prism Central, já que não há VM Templates cadastrados).
+# READ-ONLY. Se 'nutanix_template_name' for informado, FILTRA por esse nome
+# (contém, case-insensitive) e informa se existe.
+#
+#   nutanix_host / nutanix_port (9440) / nutanix_username / nutanix_password
+#   nutanix_template_name  -> (opcional) nome a procurar; vazio = lista todos
+#   nutanix_image_types    -> (opcional) filtrar por tipo: [DISK_IMAGE, ISO_IMAGE]
+
+- name: Listar templates/imagens do Nutanix
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    nutanix_port: 9440
+    nutanix_validate_certs: false
+    nutanix_template_name: ""
+    nutanix_image_types: []          # vazio = todos os tipos
+
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: "{{ nutanix_username }}"
+      url_password: "{{ nutanix_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ nutanix_validate_certs }}"
+      body_format: json
+      return_content: true
+
+  tasks:
+    - name: Validar credenciais
+      ansible.builtin.assert:
+        that:
+          - nutanix_host is defined and (nutanix_host | string | length) > 0
+          - nutanix_username is defined and nutanix_password is defined
+        fail_msg: "Faltam nutanix_host / nutanix_username / nutanix_password."
+        quiet: true
+
+    # --- VM Templates (feature nativa; pode estar vazia) ---
+    - name: Consultar VM Templates
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/vmm/v4.0.a1/content/templates?$limit=100"
+        method: GET
+        status_code: 200
+      register: nutanix_vmtpl
+
+    # --- Imagens (o que se usa para criar VMs aqui) ---
+    - name: Consultar imagens
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/nutanix/v3/images/list"
+        method: POST
+        body:
+          kind: image
+          length: 500
+        status_code: 200
+      register: nutanix_imgs
+
+    - name: Montar lista de imagens (linhas)
+      ansible.builtin.set_fact:
+        nutanix_img_lines: "{{ nutanix_img_lines | default([]) + [linha] }}"
+      loop: "{{ nutanix_imgs.json.entities | default([]) }}"
+      loop_control:
+        loop_var: img
+        label: "{{ img.status.name | default('?') }}"
+      vars:
+        linha:
+          nome: "{{ img.status.name | default('?') }}"
+          tipo: "{{ img.status.resources.image_type | default('?') }}"
+          tamanho_gb: "{{ ((img.status.resources.size_bytes | default(0)) | int / 1000000000) | round(1) }}"
+          uuid: "{{ img.metadata.uuid | default('') }}"
+
+    - name: Montar lista de VM templates (linhas)
+      ansible.builtin.set_fact:
+        nutanix_vmtpl_lines: "{{ nutanix_vmtpl.json.data | default([]) | map(attribute='templateName') | select('string') | list }}"
+
+    - name: Aplicar filtros (tipo e nome, se informados)
+      ansible.builtin.set_fact:
+        nutanix_img_filtradas: >-
+          {{ nutanix_img_lines | default([])
+             | selectattr('tipo', 'in', nutanix_image_types) | list
+             if (nutanix_image_types | length) > 0
+             else (nutanix_img_lines | default([])) }}
+
+    - name: Filtrar por nome (se informado)
+      ansible.builtin.set_fact:
+        nutanix_img_result: >-
+          {{ nutanix_img_filtradas
+             | selectattr('nome', 'search', nutanix_template_name, ignorecase=True) | list
+             if (nutanix_template_name | length) > 0
+             else nutanix_img_filtradas }}
+        nutanix_vmtpl_result: >-
+          {{ nutanix_vmtpl_lines
+             | select('search', nutanix_template_name, ignorecase=True) | list
+             if (nutanix_template_name | length) > 0
+             else nutanix_vmtpl_lines }}
+
+    - name: Relatório
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['===== TEMPLATES/IMAGENS (' ~ nutanix_host ~ ')'
+              ~ (' — filtro nome: ' ~ nutanix_template_name if (nutanix_template_name | length) > 0 else '') ~ ' ====='] +
+             ['VM Templates (' ~ (nutanix_vmtpl_result | length) ~ '): '
+              ~ (nutanix_vmtpl_result | join(', ') if (nutanix_vmtpl_result | length) > 0 else '(nenhum)')] +
+             ['Imagens (' ~ (nutanix_img_result | length) ~ '):'] +
+             (nutanix_img_result | sort(attribute='nome') | map('to_json') | list) +
+             (['>>> RESULTADO: ' ~ (('ENCONTRADO' if (nutanix_img_result | length) + (nutanix_vmtpl_result | length) > 0 else 'NÃO ENCONTRADO')
+                                     ~ ' para \"' ~ nutanix_template_name ~ '\"')]
+              if (nutanix_template_name | length) > 0 else []) }}
+
+    - name: Publicar resultado (set_stats)
+      ansible.builtin.set_stats:
+        data:
+          nutanix_templates:
+            host: "{{ nutanix_host }}"
+            filtro: "{{ nutanix_template_name }}"
+            vm_templates: "{{ nutanix_vmtpl_result }}"
+            imagens: "{{ nutanix_img_result }}"
+            total: "{{ (nutanix_img_result | length) + (nutanix_vmtpl_result | length) }}"

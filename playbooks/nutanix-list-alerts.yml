@@ -1,0 +1,88 @@
+---
+# playbooks/nutanix-list-alerts.yml
+# Lista os alertas ATIVOS (não resolvidos) do Nutanix. READ-ONLY, API v3.
+# Filtra por severidade opcionalmente. Útil para triagem do ambiente.
+#
+#   nutanix_host / nutanix_port (9440) / nutanix_username / nutanix_password
+#   nutanix_alert_severities (default critical,warning) -> severidades a listar
+#   nutanix_alert_limit (default 100)
+
+- name: Listar alertas ativos do Nutanix
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    nutanix_port: 9440
+    nutanix_validate_certs: false
+    nutanix_alert_severities:
+      - critical
+      - warning
+    nutanix_alert_limit: 100
+
+  module_defaults:
+    ansible.builtin.uri:
+      url_username: "{{ nutanix_username }}"
+      url_password: "{{ nutanix_password }}"
+      force_basic_auth: true
+      validate_certs: "{{ nutanix_validate_certs }}"
+      body_format: json
+      return_content: true
+
+  tasks:
+    - name: Validar credenciais
+      ansible.builtin.assert:
+        that:
+          - nutanix_host is defined and (nutanix_host | string | length) > 0
+          - nutanix_username is defined and nutanix_password is defined
+        fail_msg: "Faltam nutanix_host / nutanix_username / nutanix_password."
+        quiet: true
+
+    - name: Consultar alertas ativos (não resolvidos)
+      ansible.builtin.uri:
+        url: "https://{{ nutanix_host }}:{{ nutanix_port }}/api/nutanix/v3/alerts/list"
+        method: POST
+        body:
+          kind: alert
+          filter: "resolved==false;({{ nutanix_alert_severities | map('regex_replace', '^(.*)$', 'severity==\\1') | join(',') }})"
+          length: "{{ nutanix_alert_limit | int }}"
+        status_code: 200
+      register: nutanix_al
+
+    - name: Montar lista de alertas
+      ansible.builtin.set_fact:
+        nutanix_alertas: "{{ nutanix_alertas | default([]) + [linha] }}"
+      loop: "{{ nutanix_al.json.entities | default([]) }}"
+      loop_control:
+        loop_var: al
+        label: "{{ al.status.resources.title | default('?') }}"
+      vars:
+        r: "{{ al.status.resources }}"
+        linha:
+          severidade: "{{ r.severity | default('?') }}"
+          titulo: "{{ r.title | default('?') }}"
+          quando: "{{ r.latest_occurrence_time | default('?') }}"
+          cluster_uuid: "{{ r.originating_cluster_uuid | default('') }}"
+          reconhecido: "{{ r.acknowledged_status.acknowledged | default(false) }}"
+
+    - name: Ordenar por severidade (critical primeiro)
+      ansible.builtin.set_fact:
+        nutanix_alertas_ord: >-
+          {{ (nutanix_alertas | default([]) | selectattr('severidade','equalto','critical') | list)
+             + (nutanix_alertas | default([]) | selectattr('severidade','equalto','warning') | list)
+             + (nutanix_alertas | default([]) | rejectattr('severidade','in',['critical','warning']) | list) }}
+
+    - name: Relatório — alertas ativos
+      ansible.builtin.debug:
+        msg: >-
+          {{ ['===== ALERTAS ATIVOS (' ~ nutanix_host ~ ') — total: ' ~ (nutanix_al.json.metadata.total_matches | default(0)) ~
+              ' | críticos: ' ~ (nutanix_alertas | default([]) | selectattr('severidade','equalto','critical') | list | length) ~ ' ====='] +
+             (nutanix_alertas_ord | map('to_json') | list) }}
+
+    - name: Publicar resultado (set_stats)
+      ansible.builtin.set_stats:
+        data:
+          nutanix_alertas:
+            host: "{{ nutanix_host }}"
+            total: "{{ nutanix_al.json.metadata.total_matches | default(0) }}"
+            criticos: "{{ nutanix_alertas | default([]) | selectattr('severidade','equalto','critical') | list | length }}"
+            alertas: "{{ nutanix_alertas_ord }}"

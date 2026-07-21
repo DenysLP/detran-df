@@ -6,3 +6,4 @@ collections:
   - name: ansible.posix      # firewalld (linux_zabbix_agent, RHEL)
   - name: community.general  # timezone (linux_ntp) e ufw (linux_zabbix_agent, Debian/Ubuntu)
   - name: ansible.windows    # win_ping / win_updates / win_powershell / win_copy (windows_checkup)
+  - name: nutanix.ncp        # ntnx_clusters_info etc. (nutanix-validate) — provider Nutanix/Prism Central
