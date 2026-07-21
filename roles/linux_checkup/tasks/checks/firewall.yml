@@ -1,0 +1,57 @@
+---
+# checks/firewall.yml — regras de firewall (firewalld / ufw / nftables)
+
+- name: "(RedHat) Estado do firewalld"
+  ansible.builtin.command: firewall-cmd --state
+  register: linux_checkup_fw_rh_state
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: "(RedHat) Regras do firewalld (zona ativa)"
+  ansible.builtin.command: firewall-cmd --list-all
+  register: linux_checkup_fw_rh_rules
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - (linux_checkup_fw_rh_state.stdout | default('') | trim) == 'running'
+
+- name: "(Debian) Status do ufw"
+  ansible.builtin.command: ufw status verbose
+  register: linux_checkup_fw_ufw
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Contar regras nftables (fallback)
+  ansible.builtin.shell: "nft list ruleset 2>/dev/null | grep -cE '^\\s*(tcp|udp|ip|ct|meta|policy)' || true"
+  register: linux_checkup_fw_nft
+  changed_when: false
+
+- name: Relatório — firewall (RedHat)
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines }}"
+  vars:
+    # "not running" (rc != 0) costuma sair no stderr, não no stdout
+    _state: "{{ (linux_checkup_fw_rh_state.stdout | default('') | trim) or (linux_checkup_fw_rh_state.stderr | default('') | trim) or 'n/d' }}"
+    _svc: "{{ (linux_checkup_fw_rh_rules.stdout_lines | default([]) | select('match', '^\\s*services:') | list | first | default('services: n/d')) | trim }}"
+    _ports: "{{ (linux_checkup_fw_rh_rules.stdout_lines | default([]) | select('match', '^\\s*ports:') | list | first | default('ports: n/d')) | trim }}"
+    _lines:
+      - "--- FIREWALL ---"
+      - "firewalld....: {{ _state }}"
+      - "  {{ _svc }}"
+      - "  {{ _ports }}"
+      - "nftables.....: {{ linux_checkup_fw_nft.stdout | default('0') | trim }} regra(s)"
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: Relatório — firewall (Debian)
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines }}"
+  vars:
+    _status: "{{ (linux_checkup_fw_ufw.stdout_lines | default([]) | select('match', '^Status:') | list | first | default('Status: n/d')) }}"
+    _lines:
+      - "--- FIREWALL ---"
+      - "ufw..........: {{ _status }}"
+      - "nftables.....: {{ linux_checkup_fw_nft.stdout | default('0') | trim }} regra(s)"
+  when: ansible_facts['os_family'] == 'Debian'

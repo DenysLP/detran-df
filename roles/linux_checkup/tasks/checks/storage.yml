@@ -1,0 +1,37 @@
+---
+# checks/storage.yml — uso de disco e LVM
+
+- name: Coletar VGs (LVM)
+  ansible.builtin.command: vgs --noheadings -o vg_name,vg_size,vg_free
+  register: linux_checkup_vgs
+  changed_when: false
+  failed_when: false
+
+- name: Coletar LVs (LVM)
+  ansible.builtin.command: lvs --noheadings -o lv_name,vg_name,lv_size
+  register: linux_checkup_lvs
+  changed_when: false
+  failed_when: false
+
+- name: Montar linhas de uso de disco
+  ansible.builtin.set_fact:
+    linux_checkup_disk_lines: >-
+      {{ linux_checkup_disk_lines | default([])
+         + ['   ' ~ item.mount ~ ' (' ~ item.fstype ~ '): '
+            ~ (((item.size_total - item.size_available) / item.size_total * 100) | round(0) | int) ~ '% usado, '
+            ~ ((item.size_available / 1073741824) | round(1)) ~ ' GB livres de '
+            ~ ((item.size_total / 1073741824) | round(1)) ~ ' GB'] }}
+  loop: "{{ ansible_facts.mounts | rejectattr('fstype', 'in', _skip_fs) | list }}"
+  loop_control:
+    label: "{{ item.mount }}"
+  vars:
+    _skip_fs: ['tmpfs', 'devtmpfs', 'squashfs', 'overlay', 'iso9660', 'ramfs']
+  when: item.size_total | default(0) > 0
+
+- name: Relatório — disco e LVM
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + ['--- DISCO / LVM ---'] + (linux_checkup_disk_lines | default(['   (sem filesystems)'])) + _lvm }}"
+  vars:
+    _lvm_present: "{{ (linux_checkup_vgs.rc | default(1)) == 0 and (linux_checkup_vgs.stdout | default('') | trim | length) > 0 }}"
+    _lvm:
+      - "LVM..........: {{ ('detectado — VGs: ' ~ (linux_checkup_vgs.stdout_lines | map('trim') | join('; ')) ~ ' | LVs: ' ~ (linux_checkup_lvs.stdout_lines | default([]) | length)) if _lvm_present else 'não detectado (sem LVM ou lvm2 ausente)' }}"

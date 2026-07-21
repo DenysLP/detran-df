@@ -1,0 +1,62 @@
+---
+# checks/network.yml — interface de rede, IP, DNS e conectividade
+
+- name: Definir nome para teste de DNS
+  ansible.builtin.set_fact:
+    linux_checkup_dns_name: >-
+      {{ linux_checkup_dns_test_name
+         if linux_checkup_dns_test_name | length > 0
+         else (ansible_facts.dns.search[0] | default(ansible_facts.domain | default('localhost'))) }}
+
+- name: Testar resolução DNS
+  ansible.builtin.command: "getent ahostsv4 {{ linux_checkup_dns_name }}"
+  register: linux_checkup_dnsres
+  changed_when: false
+  failed_when: false
+
+- name: Ping no gateway padrão
+  ansible.builtin.command: "ping -c 1 -W 2 {{ ansible_facts.default_ipv4.gateway }}"
+  register: linux_checkup_ping
+  changed_when: false
+  failed_when: false
+  when:
+    - linux_checkup_ping_gateway | bool
+    - ansible_facts.default_ipv4.gateway is defined
+
+- name: Testar alvos TCP configurados
+  ansible.builtin.wait_for:
+    host: "{{ item.host }}"
+    port: "{{ item.port }}"
+    timeout: 3
+    state: started
+  loop: "{{ linux_checkup_tcp_targets }}"
+  loop_control:
+    label: "{{ item.name }} ({{ item.host }}:{{ item.port }})"
+  register: linux_checkup_tcp
+  changed_when: false
+  failed_when: false
+
+- name: Montar linhas dos alvos TCP
+  ansible.builtin.set_fact:
+    linux_checkup_tcp_lines: >-
+      {{ linux_checkup_tcp_lines | default([])
+         + ['   - ' ~ item.item.name ~ ' (' ~ item.item.host ~ ':' ~ item.item.port ~ ') = '
+            ~ ('OK' if not (item.failed | default(true)) else 'FALHOU')] }}
+  loop: "{{ linux_checkup_tcp.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: linux_checkup_tcp_targets | length > 0
+
+- name: Relatório — rede
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines + (linux_checkup_tcp_lines | default(['   (nenhum alvo TCP configurado)'])) }}"
+  vars:
+    _lines:
+      - "--- REDE ---"
+      - "Interfaces...: {{ ansible_facts.interfaces | join(', ') }}"
+      - "IPs (v4).....: {{ ansible_facts.all_ipv4_addresses | default([]) | join(', ') }}"
+      - "Default......: {{ ansible_facts.default_ipv4.interface | default('?') }} {{ ansible_facts.default_ipv4.address | default('') }} via gw {{ ansible_facts.default_ipv4.gateway | default('?') }}"
+      - "DNS servers..: {{ ansible_facts.dns.nameservers | default([]) | join(', ') }} | search: {{ ansible_facts.dns.search | default([]) | join(', ') }}"
+      - "DNS resolve..: {{ linux_checkup_dns_name }} -> {{ 'OK' if (linux_checkup_dnsres.rc | default(1)) == 0 else 'FALHOU' }}"
+      - "Gateway ping.: {{ 'OK' if (linux_checkup_ping.rc | default(1)) == 0 else ('FALHOU' if linux_checkup_ping_gateway else 'n/d') }}"
+      - "Alvos TCP....:"

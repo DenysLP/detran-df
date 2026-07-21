@@ -1,0 +1,74 @@
+---
+# checks/network.yml — interfaces de rede, IP, DNS e conectividade
+
+- name: Consultar interfaces de rede
+  ansible.windows.win_powershell:
+    script: |
+      $Interfaces = Get-NetAdapter -ErrorAction SilentlyContinue | ForEach-Object {
+          $Adapter = $_
+          $IpConfiguration = Get-NetIPConfiguration -InterfaceIndex $Adapter.ifIndex -ErrorAction SilentlyContinue
+          $DnsConfiguration = Get-DnsClientServerAddress -InterfaceIndex $Adapter.ifIndex -ErrorAction SilentlyContinue
+          [PSCustomObject]@{
+              Name        = $Adapter.Name
+              Description = $Adapter.InterfaceDescription
+              Status      = "$($Adapter.Status)"
+              MacAddress  = $Adapter.MacAddress
+              LinkSpeed   = "$($Adapter.LinkSpeed)"
+              IPv4        = @($IpConfiguration.IPv4Address | Select-Object -ExpandProperty IPAddress)
+              IPv6        = @($IpConfiguration.IPv6Address | Select-Object -ExpandProperty IPAddress)
+              Gateway     = @($IpConfiguration.IPv4DefaultGateway | Select-Object -ExpandProperty NextHop)
+              DNS         = @($DnsConfiguration.ServerAddresses)
+          }
+      }
+      $Ansible.Result = @($Interfaces)
+  register: resultado_interfaces
+  failed_when: false
+
+- name: Armazenar interfaces de rede
+  ansible.builtin.set_fact:
+    interfaces_rede: "{{ resultado_interfaces.result | default([]) }}"
+
+- name: Armazenar endereços IP e gateway
+  ansible.builtin.set_fact:
+    enderecos_ip:
+      ipv4: "{{ resultado_interfaces.result | default([]) | map(attribute='IPv4') | flatten | reject('equalto', '') | list }}"
+      ipv6: "{{ resultado_interfaces.result | default([]) | map(attribute='IPv6') | flatten | reject('equalto', '') | list }}"
+      gateway: "{{ resultado_interfaces.result | default([]) | map(attribute='Gateway') | flatten | reject('equalto', '') | unique | list }}"
+
+- name: Armazenar servidores DNS configurados
+  ansible.builtin.set_fact:
+    servidores_dns:
+      configurado: "{{ dns_encontrados | length > 0 }}"
+      servidores: "{{ dns_encontrados }}"
+      mensagem: "{{ 'Servidores DNS encontrados' if dns_encontrados | length > 0 else 'Nenhum servidor DNS configurado' }}"
+  vars:
+    dns_encontrados: "{{ resultado_interfaces.result | default([]) | map(attribute='DNS') | flatten | reject('equalto', '') | unique | list }}"
+
+- name: Testar conectividade de rede
+  ansible.windows.win_powershell:
+    script: |
+      $Destinos = @({{ windows_checkup_ping_targets | map('regex_replace', '^(.+)$', '\"\\1\"') | join(', ') }})
+      if (-not $Destinos -or $Destinos.Count -eq 0) {
+          $gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue |
+                 Sort-Object RouteMetric | Select-Object -First 1).NextHop
+          if ($gw) { $Destinos = @($gw) }
+      }
+      $Testes = foreach ($Destino in $Destinos) {
+          $Resultado = Test-NetConnection -ComputerName $Destino -InformationLevel Detailed -WarningAction SilentlyContinue
+          [PSCustomObject]@{
+              Destino        = $Destino
+              PingSucceeded  = [bool]$Resultado.PingSucceeded
+              RemoteAddress  = "$($Resultado.RemoteAddress)"
+              InterfaceAlias = "$($Resultado.InterfaceAlias)"
+              SourceAddress  = "$($Resultado.SourceAddress)"
+          }
+      }
+      $Ansible.Result = @($Testes)
+  register: resultado_conectividade
+  failed_when: false
+
+- name: Armazenar resultado da conectividade
+  ansible.builtin.set_fact:
+    conectividade:
+      possui_conectividade: "{{ (resultado_conectividade.result | default([]) | selectattr('PingSucceeded', 'equalto', true) | list | length) > 0 }}"
+      testes: "{{ resultado_conectividade.result | default([]) }}"

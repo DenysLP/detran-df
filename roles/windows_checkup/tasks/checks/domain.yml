@@ -1,0 +1,30 @@
+---
+# checks/domain.yml — ingresso no domínio AD
+# No Windows o ingresso é nativo (não usa PBIS, que é de Linux). Consultamos
+# Win32_ComputerSystem: PartOfDomain / Domain.
+
+- name: Consultar domínio configurado
+  ansible.windows.win_powershell:
+    script: |
+      $ComputerSystem = Get-CimInstance Win32_ComputerSystem
+      $Ansible.Result = [PSCustomObject]@{
+          PartOfDomain = [bool]$ComputerSystem.PartOfDomain
+          Domain       = if ($ComputerSystem.PartOfDomain) { $ComputerSystem.Domain } else { $null }
+          Workgroup    = if (-not $ComputerSystem.PartOfDomain) { $ComputerSystem.Workgroup } else { $null }
+      }
+  register: resultado_dominio
+  failed_when: false
+
+- name: Armazenar informações do domínio
+  ansible.builtin.set_fact:
+    dominio:
+      configurado: "{{ resultado_dominio.result.PartOfDomain | default(false) }}"
+      nome: "{{ resultado_dominio.result.Domain | default('Nenhum domínio configurado', true) }}"
+      workgroup: "{{ resultado_dominio.result.Workgroup | default('', true) }}"
+      esperado_ok: >-
+        {{ (windows_checkup_expected_domain | length == 0)
+           or (windows_checkup_expected_domain | lower in (resultado_dominio.result.Domain | default('') | lower)) }}
+      mensagem: >-
+        {{ ('Máquina ingressada no domínio ' ~ resultado_dominio.result.Domain)
+           if (resultado_dominio.result.PartOfDomain | default(false))
+           else 'A máquina não pertence a nenhum domínio' }}

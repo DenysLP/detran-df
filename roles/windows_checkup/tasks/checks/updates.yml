@@ -1,0 +1,17 @@
+---
+# checks/updates.yml — atualizações pendentes do SO
+
+- name: Consultar atualizações pendentes no sistema operacional
+  ansible.windows.win_updates:
+    category_names: "{{ windows_checkup_update_categories }}"
+    state: searched
+  register: resultado_atualizacoes
+  failed_when: false
+
+- name: Armazenar atualizações pendentes
+  ansible.builtin.set_fact:
+    atualizacoes_sistema:
+      possui_atualizacoes: "{{ (resultado_atualizacoes.found_update_count | default(0) | int) > 0 }}"
+      quantidade: "{{ resultado_atualizacoes.found_update_count | default(0) }}"
+      atualizado: "{{ (resultado_atualizacoes.found_update_count | default(0) | int) == 0 }}"
+      atualizacoes: "{{ resultado_atualizacoes.updates | default({}) }}"

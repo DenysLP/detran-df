@@ -1,8 +1,7 @@
 ---
 # defaults/main.yml — linux_checkup
 # Role de inventário/check-up READ-ONLY: não altera nada na máquina.
-# Roda antes das demais roles para saber o estado do host (updates, proxy,
-# agentes, tempo, etc.). Suporta RHEL, Debian e Ubuntu.
+# Roda antes das demais roles para saber o estado do host. Suporta RHEL, Debian e Ubuntu.
 
 # Famílias de SO aceitas pela validação (ansible_facts['os_family'])
 linux_checkup_supported_families:
@@ -10,20 +9,46 @@ linux_checkup_supported_families:
   - Debian
 
 # Atualiza o cache de metadados do gerenciador antes de contar updates.
-# (leitura de repositório; não instala nada). Deixe true para contagem precisa.
 linux_checkup_refresh_cache: true
 
-# Agentes a procurar no host (pacote + serviço). Ajuste conforme o parque.
+# --- Acesso (SSH) ---
+# Checar a config efetiva do sshd (login por senha e por chave)
+linux_checkup_ssh_config_check: true
+
+# --- Conectividade ---
+# Faz ping no gateway padrão
+linux_checkup_ping_gateway: true
+# Alvos TCP extras a testar: lista de { name, host, port }
+# Ex.: - { name: "Zabbix", host: "zabbix.detran.df.gov.br", port: 10051 }
+linux_checkup_tcp_targets: []
+# Nome a resolver para testar DNS (vazio = usa o domínio detectado do host)
+linux_checkup_dns_test_name: ""
+
+# --- Pacotes ---
+# Pacotes que DEVEM estar instalados (reporta os que faltam). Ex.: [chrony, sudo]
+linux_checkup_required_packages: []
+
+# --- Domínio (AD) ---
+# Domínio esperado (vazio = só reporta o que encontrar). Ex.: "detran.df"
+linux_checkup_expected_domain: ""
+
+# --- Agentes a procurar (pacote + serviço) ---
 # Pacote ausente é reportado como "ausente" — não é erro.
 linux_checkup_agents:
-  - { name: "Zabbix Agent 2", package: "zabbix-agent2", service: "zabbix-agent2" }
-  - { name: "Zabbix Agent",   package: "zabbix-agent",  service: "zabbix-agent" }
-  - { name: "Filebeat",       package: "filebeat",       service: "filebeat" }
-  - { name: "Node Exporter",  package: "node_exporter",  service: "node_exporter" }
-  - { name: "CrowdStrike Falcon", package: "falcon-sensor", service: "falcon-sensor" }
+  - { name: "Zabbix Agent 2",        package: "zabbix-agent2",     service: "zabbix-agent2" }
+  - { name: "Zabbix Agent",          package: "zabbix-agent",      service: "zabbix-agent" }
+  - { name: "Nutanix Guest Tools (NGT)", package: "nutanix-guest-tools", service: "ngt_guest_agent" }
+  - { name: "Filebeat",              package: "filebeat",          service: "filebeat" }
+  - { name: "Node Exporter",         package: "node_exporter",     service: "node_exporter" }
+  - { name: "CrowdStrike Falcon",    package: "falcon-sensor",     service: "falcon-sensor" }
 
-# Escrever também um relatório em arquivo no próprio host?
-# (única tarefa que escreve algo — desligada por padrão para manter 100% read-only)
+# Caminhos onde o NGT costuma se instalar (detecção fora do gerenciador de pacotes)
+linux_checkup_ngt_paths:
+  - /usr/local/nutanix/ngt
+  - /usr/local/nutanix
+
+# --- Relatório ---
+# Escrever também um relatório em arquivo no host? (única tarefa que escreve)
 linux_checkup_write_report: false
 linux_checkup_report_path: "/var/log/linux_checkup.txt"
 

@@ -1,0 +1,73 @@
+---
+# checks/report.yml — relatório legível + publicação (set_stats) para o Workflow
+
+- name: Montar relatório do check-up (Windows)
+  ansible.builtin.set_fact:
+    windows_checkup_report:
+      - "===================== CHECK-UP WINDOWS: {{ inventory_hostname }} ====================="
+      - "SO...........: {{ sistema_operacional.nome }} (build {{ sistema_operacional.build }}, {{ sistema_operacional.arquitetura }})"
+      - "Último boot...: {{ sistema_operacional.ultimo_boot }}"
+      - "Conexão WinRM.: {{ validacao_conexao.status }}"
+      - "--- ACESSO ---"
+      - "Login usuário/senha (WinRM): habilitado={{ acesso_winrm.usuario_senha_habilitado }} | AllowUnencrypted={{ acesso_winrm.allow_unencrypted }} | listeners={{ acesso_winrm.listeners | map(attribute='Keys') | list }}"
+      - "Login chave SSH (OpenSSH)..: instalado={{ configuracao_ssh.instalado }} | serviço={{ configuracao_ssh.status }} | porta22={{ configuracao_ssh.porta_22_ativa }} | chave={{ configuracao_ssh.chave_configurada }}"
+      - "--- REDE ---"
+      - "Interfaces...: {{ interfaces_rede | selectattr('Status', 'equalto', 'Up') | map(attribute='Name') | list }}"
+      - "IPs (v4).....: {{ enderecos_ip.ipv4 }}"
+      - "Gateway......: {{ enderecos_ip.gateway }}"
+      - "DNS..........: {{ servidores_dns.servidores }}"
+      - "Conectividade: {{ 'OK' if conectividade.possui_conectividade else 'FALHOU' }} ({{ conectividade.testes | map(attribute='Destino') | list }})"
+      - "--- DISCO / VOLUMES ---"
+      - "Discos.......: {{ discos.quantidade }} | Volumes: {{ volumes.volumes | map(attribute='DriveLetter') | list }}"
+      - "Storage Spaces: {{ 'sim' if storage_pools.possui else 'não' }}"
+      - "--- ATUALIZAÇÕES ---"
+      - "SO atualizado: {{ 'SIM (0 pendências)' if atualizacoes_sistema.atualizado else 'NÃO — ' ~ atualizacoes_sistema.quantidade ~ ' pendente(s)' }}"
+      - "--- PROXY ---"
+      - "Configurado..: {{ proxy.configurado }} | usuário: {{ proxy.proxy_usuario }}"
+      - "--- FIREWALL ---"
+      - "Perfis ativos: {{ firewall.perfis | selectattr('Enabled', 'equalto', true) | map(attribute='Name') | list }} (de {{ firewall.perfis | map(attribute='Name') | list }})"
+      - "Regras habil.: {{ firewall.quantidade_regras_habilitadas }}"
+      - "--- PACOTES ---"
+      - "Instalados...: {{ pacotes_instalados.quantidade }}{{ (' | faltando: ' ~ (pacotes_instalados.obrigatorios_faltando | join(', '))) if pacotes_instalados.obrigatorios_faltando | length > 0 else '' }}"
+      - "--- AGENTES ---"
+      - "Monitoramento: {{ agentes_monitoramento.mensagem }}{{ (' -> ' ~ (agentes_monitoramento.agentes | map(attribute='Name') | list | join(', '))) if agentes_monitoramento.instalado else '' }}"
+      - "NGT..........: {{ nutanix_guest_tools.mensagem }}"
+      - "--- DOMÍNIO (AD) ---"
+      - "Ingressado...: {{ dominio.configurado }} | domínio: {{ dominio.nome }}"
+      - "Esperado.....: {{ ('OK' if dominio.esperado_ok else 'DIVERGE') if windows_checkup_expected_domain | length > 0 else '(não especificado)' }}"
+
+- name: Exibir relatório do check-up (Windows)
+  ansible.builtin.debug:
+    msg: "{{ windows_checkup_report }}"
+
+- name: Gravar relatório em arquivo no host (opcional)
+  ansible.windows.win_copy:
+    content: "{{ windows_checkup_report | join('\n') }}\n"
+    dest: "{{ windows_checkup_report_path }}"
+  when: windows_checkup_write_report | bool
+
+- name: Publicar resultado da validação (set_stats) para o Workflow
+  ansible.builtin.set_stats:
+    data:
+      validacao_windows:
+        hostname: "{{ inventory_hostname }}"
+        conexao: "{{ validacao_conexao }}"
+        acesso_winrm: "{{ acesso_winrm }}"
+        ssh: "{{ configuracao_ssh }}"
+        sistema_operacional: "{{ sistema_operacional }}"
+        atualizacoes: "{{ atualizacoes_sistema }}"
+        interfaces_rede: "{{ interfaces_rede }}"
+        enderecos_ip: "{{ enderecos_ip }}"
+        servidores_dns: "{{ servidores_dns }}"
+        conectividade: "{{ conectividade }}"
+        discos: "{{ discos }}"
+        volumes: "{{ volumes }}"
+        storage_pools: "{{ storage_pools }}"
+        proxy: "{{ proxy }}"
+        agentes_monitoramento: "{{ agentes_monitoramento }}"
+        nutanix_guest_tools: "{{ nutanix_guest_tools }}"
+        firewall: "{{ firewall }}"
+        pacotes_instalados: "{{ pacotes_instalados }}"
+        dominio: "{{ dominio }}"
+    per_host: true
+  when: windows_checkup_set_stats | bool

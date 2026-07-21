@@ -1,0 +1,25 @@
+---
+# checks/system.yml — informações do sistema operacional
+
+- name: Consultar informações do sistema operacional
+  ansible.windows.win_powershell:
+    script: |
+      $OperatingSystem = Get-CimInstance Win32_OperatingSystem
+      $Ansible.Result = [PSCustomObject]@{
+          Caption      = $OperatingSystem.Caption
+          Version      = $OperatingSystem.Version
+          BuildNumber  = $OperatingSystem.BuildNumber
+          Architecture = $OperatingSystem.OSArchitecture
+          LastBootTime = "$($OperatingSystem.LastBootUpTime)"
+      }
+  register: resultado_sistema_operacional
+  failed_when: false
+
+- name: Armazenar informações do sistema operacional
+  ansible.builtin.set_fact:
+    sistema_operacional:
+      nome: "{{ resultado_sistema_operacional.result.Caption | default('n/d') }}"
+      versao: "{{ resultado_sistema_operacional.result.Version | default('n/d') }}"
+      build: "{{ resultado_sistema_operacional.result.BuildNumber | default('n/d') }}"
+      arquitetura: "{{ resultado_sistema_operacional.result.Architecture | default('n/d') }}"
+      ultimo_boot: "{{ resultado_sistema_operacional.result.LastBootTime | default('n/d') }}"

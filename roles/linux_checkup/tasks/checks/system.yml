@@ -1,0 +1,20 @@
+---
+# checks/system.yml — cabeçalho/inventário geral + NTP
+
+- name: Checar sincronização de tempo (NTP)
+  ansible.builtin.command: timedatectl show -p NTPSynchronized --value
+  register: linux_checkup_ntp
+  changed_when: false
+  failed_when: false
+
+- name: Relatório — sistema
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines }}"
+  vars:
+    _lines:
+      - "===================== CHECK-UP: {{ inventory_hostname }} ====================="
+      - "SO...........: {{ ansible_facts.distribution }} {{ ansible_facts.distribution_version }} ({{ ansible_facts.os_family }}) | kernel {{ ansible_facts.kernel }} | pkg_mgr {{ ansible_facts.pkg_mgr }}"
+      - "Host.........: {{ ansible_facts.fqdn }} | uptime {{ ansible_facts.uptime_seconds // 3600 }}h | tz {{ ansible_facts.date_time.tz }}"
+      - "CPU/RAM......: {{ ansible_facts.processor_vcpus | default(ansible_facts.processor_cores) }} vCPU | {{ ansible_facts.memtotal_mb }} MB ({{ ansible_facts.memfree_mb }} MB livre)"
+      - "SELinux......: {{ ansible_facts.selinux.status | default('n/a') }}{{ ' (' ~ ansible_facts.selinux.config_mode ~ ')' if ansible_facts.selinux.config_mode is defined else '' }}"
+      - "NTP synced...: {{ linux_checkup_ntp.stdout | default('n/a') }}"

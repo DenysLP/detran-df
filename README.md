@@ -12,13 +12,15 @@ carregam de `vars/<família>.yml` o pacote, serviço e caminhos corretos antes d
 ├── collections/requirements.yml   # coleções (ansible.posix, community.general)
 ├── inventories/exemplo/hosts.ini  # inventário de exemplo (grupo [linux])
 ├── playbooks/                     # 1 playbook de exemplo por role
-│   ├── checkup.yml
+│   ├── checkup.yml                # check-up READ-ONLY Linux
+│   ├── windows-checkup.yml        # check-up READ-ONLY Windows
 │   ├── os-update.yml
 │   ├── packages.yml
 │   ├── ntp.yml
 │   └── zabbix-agent.yml
 └── roles/
-    ├── linux_checkup/             # inventário/check-up READ-ONLY (rodar antes das demais)
+    ├── linux_checkup/             # inventário/check-up READ-ONLY Linux (rodar antes das demais)
+    ├── windows_checkup/           # inventário/check-up READ-ONLY Windows (via WinRM)
     ├── linux_os_update/           # update do SO (yum/dnf/dnf5/apt) + reboot controlado
     ├── linux_packages/            # instalação/remoção de pacotes e grupos
     ├── linux_ntp/                 # NTP via chrony (padrão NTP.br)
@@ -30,6 +32,7 @@ carregam de `vars/<família>.yml` o pacote, serviço e caminhos corretos antes d
 | Role | Função | Plataformas | Playbook |
 |---|---|---|---|
 | `linux_checkup` | Inventário/check-up **read-only** (updates, proxy, agentes, tempo) | RHEL / Debian / Ubuntu | `playbooks/checkup.yml` |
+| `windows_checkup` | Inventário/check-up **read-only** via WinRM (acesso, rede, disco, updates, proxy, agentes, firewall, pacotes, domínio) | Windows | `playbooks/windows-checkup.yml` |
 | `linux_os_update` | Atualiza o SO, reboot `auto/true/false` | RHEL / Debian / Ubuntu | `playbooks/os-update.yml` |
 | `linux_packages` | Instala/remove pacotes e grupos | RHEL / Debian / Ubuntu | `playbooks/packages.yml` |
 | `linux_ntp` | Instala e configura chrony (NTP.br) | RHEL / Debian / Ubuntu | `playbooks/ntp.yml` |

@@ -1,0 +1,31 @@
+---
+# checks/firewall.yml — perfis e regras de firewall do Windows
+
+- name: Consultar perfis de firewall
+  ansible.windows.win_powershell:
+    script: |
+      $Profiles = Get-NetFirewallProfile -ErrorAction SilentlyContinue | ForEach-Object {
+          [PSCustomObject]@{
+              Name                  = "$($_.Name)"
+              Enabled               = [bool]$_.Enabled
+              DefaultInboundAction  = "$($_.DefaultInboundAction)"
+              DefaultOutboundAction = "$($_.DefaultOutboundAction)"
+          }
+      }
+      $Ansible.Result = @($Profiles)
+  register: resultado_perfis_firewall
+  failed_when: false
+
+- name: Contar regras de firewall habilitadas
+  ansible.windows.win_powershell:
+    script: |
+      $Count = (Get-NetFirewallRule -ErrorAction SilentlyContinue | Where-Object Enabled -eq $true | Measure-Object).Count
+      $Ansible.Result = [PSCustomObject]@{ EnabledRulesCount = [int]$Count }
+  register: resultado_regras_firewall
+  failed_when: false
+
+- name: Armazenar configurações do firewall
+  ansible.builtin.set_fact:
+    firewall:
+      perfis: "{{ resultado_perfis_firewall.result | default([]) }}"
+      quantidade_regras_habilitadas: "{{ resultado_regras_firewall.result.EnabledRulesCount | default(0) }}"

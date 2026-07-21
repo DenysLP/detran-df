@@ -1,0 +1,27 @@
+---
+# checks/packages.yml — programas instalados (registro de Uninstall)
+
+- name: Consultar pacotes/programas instalados
+  ansible.windows.win_powershell:
+    script: |
+      $Packages = @(
+          Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue
+          Get-ItemProperty "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue
+      ) |
+          Where-Object DisplayName |
+          Select-Object DisplayName, DisplayVersion, Publisher |
+          Sort-Object DisplayName -Unique
+      $Ansible.Result = @($Packages)
+  register: resultado_pacotes
+  failed_when: false
+
+- name: Armazenar pacotes instalados
+  ansible.builtin.set_fact:
+    pacotes_instalados:
+      quantidade: "{{ resultado_pacotes.result | default([]) | length }}"
+      pacotes: "{{ resultado_pacotes.result | default([]) }}"
+      # Programas obrigatórios ausentes (match parcial no DisplayName)
+      obrigatorios_faltando: >-
+        {{ windows_checkup_required_programs
+           | reject('in', (resultado_pacotes.result | default([]) | map(attribute='DisplayName') | join('||')))
+           | list }}

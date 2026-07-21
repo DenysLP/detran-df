@@ -1,0 +1,11 @@
+---
+# playbooks/windows-checkup.yml — inventário/check-up READ-ONLY das VMs Windows
+# Rode ANTES de qualquer role que altera o sistema. Não muda nada no host.
+# Conexão via WinRM (ver credencial WinRM no AAP). AAP: use como primeiro passo
+# de um Workflow — os dados ficam disponíveis via set_stats para os jobs seguintes.
+
+- name: Check-up / inventário das VMs Windows
+  hosts: windows
+  gather_facts: false
+  roles:
+    - role: windows_checkup

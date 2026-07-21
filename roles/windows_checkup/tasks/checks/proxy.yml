@@ -1,0 +1,33 @@
+---
+# checks/proxy.yml — proxy configurado (WinHTTP do sistema + WinINET do usuário)
+
+- name: Consultar proxy configurado
+  ansible.windows.win_powershell:
+    script: |
+      $WinHttpProxy = netsh winhttp show proxy | Out-String
+      $InternetSettings = Get-ItemProperty `
+          -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings" `
+          -ErrorAction SilentlyContinue
+      $ProxyEnabled = $false
+      $ProxyServer = $null
+      if ($InternetSettings) {
+          $ProxyEnabled = [bool]$InternetSettings.ProxyEnable
+          $ProxyServer = $InternetSettings.ProxyServer
+      }
+      $WinHttpConfigured = $WinHttpProxy -notmatch "Direct access|Acesso direto|no proxy server"
+      $Ansible.Result = [PSCustomObject]@{
+          WinHttpConfigured = [bool]$WinHttpConfigured
+          WinHttp           = $WinHttpProxy.Trim()
+          UserProxyEnabled  = [bool]$ProxyEnabled
+          UserProxyServer   = $ProxyServer
+      }
+  register: resultado_proxy
+  failed_when: false
+
+- name: Armazenar proxy configurado
+  ansible.builtin.set_fact:
+    proxy:
+      configurado: "{{ (resultado_proxy.result.WinHttpConfigured | default(false)) or (resultado_proxy.result.UserProxyEnabled | default(false)) }}"
+      winhttp: "{{ resultado_proxy.result.WinHttp | default('n/d') }}"
+      proxy_usuario_habilitado: "{{ resultado_proxy.result.UserProxyEnabled | default(false) }}"
+      proxy_usuario: "{{ resultado_proxy.result.UserProxyServer | default('Nenhum proxy configurado', true) }}"

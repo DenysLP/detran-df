@@ -1,0 +1,23 @@
+---
+# meta/main.yml — windows_checkup
+galaxy_info:
+  role_name: windows_checkup
+  namespace: detrandf
+  author: DETRAN-DF — Infraestrutura
+  description: Check-up/inventário read-only de VMs Windows (acesso, rede, disco, updates, proxy, agentes, firewall, pacotes, domínio) via WinRM.
+  company: DETRAN-DF
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: Windows
+      versions:
+        - all
+  galaxy_tags:
+    - windows
+    - checkup
+    - inventory
+    - audit
+    - aap
+
+# Requer a coleção ansible.windows (win_ping, win_updates, win_powershell).
+dependencies: []

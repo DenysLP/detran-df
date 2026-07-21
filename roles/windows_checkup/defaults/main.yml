@@ -1,0 +1,36 @@
+---
+# defaults/main.yml — windows_checkup
+# Check-up/inventário READ-ONLY de VMs Windows (equivalente ao linux_checkup).
+# Coleta via WinRM + PowerShell; não altera nada na máquina.
+
+# Categorias de atualização consultadas (win_updates, state=searched)
+windows_checkup_update_categories:
+  - CriticalUpdates
+  - SecurityUpdates
+  - UpdateRollups
+
+# Alvos de conectividade a testar (Test-NetConnection).
+# Vazio = usa o gateway padrão detectado (adequado à rede interna DETRAN,
+# onde 8.8.8.8/1.1.1.1 podem estar bloqueados). Ex.: ["10.138.100.1", "detran.df"]
+windows_checkup_ping_targets: []
+
+# Regex de nomes/serviços de agentes de monitoramento a procurar
+windows_checkup_monitor_pattern: "zabbix|dynatrace|splunk|telegraf|nagios|solarwinds|checkmk|nrpe"
+
+# Regex do Nutanix Guest Tools (serviço/produto)
+windows_checkup_ngt_pattern: "nutanix|guest tools|ngt"
+
+# Programas obrigatórios (DisplayName, match parcial) — reporta os que faltam. Ex.: ["7-Zip"]
+windows_checkup_required_programs: []
+
+# Domínio AD esperado (vazio = só reporta). Ex.: "detran.df"
+windows_checkup_expected_domain: ""
+
+# Gravar o relatório legível em arquivo no host? (única ação que escreve)
+windows_checkup_write_report: false
+windows_checkup_report_path: 'C:\Windows\Temp\windows_checkup.txt'
+
+# Publicar os dados coletados via set_stats (para encadear em Workflow no AAP)
+windows_checkup_set_stats: true
+
+windows_checkup_assert_windows: true

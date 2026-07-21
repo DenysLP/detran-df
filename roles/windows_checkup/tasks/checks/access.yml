@@ -1,0 +1,69 @@
+---
+# checks/access.yml — acesso: login usuário/senha (WinRM auth) e login por chave (OpenSSH)
+
+# --- Login usuário/senha: métodos de autenticação habilitados no serviço WinRM ---
+- name: Consultar métodos de autenticação do WinRM
+  ansible.windows.win_powershell:
+    script: |
+      $Auth = Get-ChildItem WSMan:\localhost\Service\Auth -ErrorAction SilentlyContinue |
+          ForEach-Object { [PSCustomObject]@{ Name = $_.Name; Value = "$($_.Value)" } }
+      $AllowUnencrypted = (Get-Item WSMan:\localhost\Service\AllowUnencrypted -ErrorAction SilentlyContinue).Value
+      $Listeners = Get-ChildItem WSMan:\localhost\Listener -ErrorAction SilentlyContinue |
+          ForEach-Object {
+              $keys = $_.Keys -join ', '
+              [PSCustomObject]@{ Name = $_.Name; Keys = "$keys" }
+          }
+      $Ansible.Result = [PSCustomObject]@{
+          Auth             = @($Auth)
+          AllowUnencrypted = "$AllowUnencrypted"
+          Listeners        = @($Listeners)
+      }
+  register: resultado_winrm
+  failed_when: false
+
+- name: Armazenar configuração de acesso WinRM (usuário/senha)
+  ansible.builtin.set_fact:
+    acesso_winrm:
+      metodos: "{{ resultado_winrm.result.Auth | default([]) }}"
+      # login usuário/senha = Basic e/ou Negotiate habilitados
+      usuario_senha_habilitado: >-
+        {{ (resultado_winrm.result.Auth | default([])
+            | selectattr('Name', 'in', ['Basic', 'Negotiate'])
+            | selectattr('Value', 'equalto', 'true') | list | length) > 0 }}
+      allow_unencrypted: "{{ resultado_winrm.result.AllowUnencrypted | default('n/d') }}"
+      listeners: "{{ resultado_winrm.result.Listeners | default([]) }}"
+
+# --- Login por chave SSH: OpenSSH Server (equivalente ao SSH do Linux) ---
+- name: Consultar configuração do OpenSSH Server
+  ansible.windows.win_powershell:
+    script: |
+      $SshService = Get-Service sshd -ErrorAction SilentlyContinue
+      $AuthorizedKeysPaths = @(
+          "C:\ProgramData\ssh\administrators_authorized_keys"
+          "$env:USERPROFILE\.ssh\authorized_keys"
+      )
+      $AuthorizedKeys = $AuthorizedKeysPaths | ForEach-Object {
+          [PSCustomObject]@{ Path = $_; Exists = [bool](Test-Path $_) }
+      }
+      $PortListening = [bool](Get-NetTCPConnection -LocalPort 22 -State Listen -ErrorAction SilentlyContinue)
+      $Ansible.Result = [PSCustomObject]@{
+          Installed       = [bool]$SshService
+          Status          = if ($SshService) { "$($SshService.Status)" } else { "NotInstalled" }
+          StartType       = if ($SshService) { "$($SshService.StartType)" } else { $null }
+          Port22Listening = $PortListening
+          AuthorizedKeys  = @($AuthorizedKeys)
+      }
+  register: resultado_ssh
+  failed_when: false
+
+- name: Armazenar configuração do OpenSSH Server (login por chave)
+  ansible.builtin.set_fact:
+    configuracao_ssh:
+      instalado: "{{ resultado_ssh.result.Installed | default(false) }}"
+      status: "{{ resultado_ssh.result.Status | default('NotInstalled') }}"
+      tipo_inicializacao: "{{ resultado_ssh.result.StartType | default('', true) }}"
+      porta_22_ativa: "{{ resultado_ssh.result.Port22Listening | default(false) }}"
+      arquivos_chaves: "{{ resultado_ssh.result.AuthorizedKeys | default([]) }}"
+      chave_configurada: >-
+        {{ (resultado_ssh.result.AuthorizedKeys | default([])
+            | selectattr('Exists', 'equalto', true) | list | length) > 0 }}

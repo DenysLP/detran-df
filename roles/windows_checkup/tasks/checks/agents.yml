@@ -1,0 +1,60 @@
+---
+# checks/agents.yml — agentes de monitoramento e Nutanix Guest Tools (NGT)
+
+- name: Consultar agentes de monitoramento instalados
+  ansible.windows.win_powershell:
+    script: |
+      $Pattern = "{{ windows_checkup_monitor_pattern }}"
+      $Agents = Get-Service -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -match $Pattern -or $_.DisplayName -match $Pattern } |
+          ForEach-Object {
+              [PSCustomObject]@{
+                  Name        = $_.Name
+                  DisplayName = $_.DisplayName
+                  Status      = "$($_.Status)"
+                  StartType   = "$($_.StartType)"
+              }
+          }
+      $Ansible.Result = @($Agents)
+  register: resultado_monitoramento
+  failed_when: false
+
+- name: Armazenar agentes de monitoramento encontrados
+  ansible.builtin.set_fact:
+    agentes_monitoramento:
+      instalado: "{{ (resultado_monitoramento.result | default([]) | length) > 0 }}"
+      quantidade: "{{ resultado_monitoramento.result | default([]) | length }}"
+      agentes: "{{ resultado_monitoramento.result | default([]) }}"
+      mensagem: "{{ 'Agente de monitoramento encontrado' if (resultado_monitoramento.result | default([]) | length) > 0 else 'Nenhum agente de monitoramento identificado' }}"
+
+- name: Consultar Nutanix Guest Tools (NGT)
+  ansible.windows.win_powershell:
+    script: |
+      $Pattern = "{{ windows_checkup_ngt_pattern }}"
+      $Services = Get-Service -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -match $Pattern -or $_.DisplayName -match $Pattern } |
+          ForEach-Object {
+              [PSCustomObject]@{
+                  Name        = $_.Name
+                  DisplayName = $_.DisplayName
+                  Status      = "$($_.Status)"
+                  StartType   = "$($_.StartType)"
+              }
+          }
+      $Packages = @(
+          Get-ItemProperty "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue
+          Get-ItemProperty "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*" -ErrorAction SilentlyContinue
+      ) |
+          Where-Object { $_.DisplayName -match $Pattern } |
+          Select-Object DisplayName, DisplayVersion, Publisher
+      $Ansible.Result = [PSCustomObject]@{ Services = @($Services); Packages = @($Packages) }
+  register: resultado_ngt
+  failed_when: false
+
+- name: Armazenar informações do Nutanix Guest Tools
+  ansible.builtin.set_fact:
+    nutanix_guest_tools:
+      instalado: "{{ ((resultado_ngt.result.Services | default([]) | length) > 0) or ((resultado_ngt.result.Packages | default([]) | length) > 0) }}"
+      servicos: "{{ resultado_ngt.result.Services | default([]) }}"
+      pacotes: "{{ resultado_ngt.result.Packages | default([]) }}"
+      mensagem: "{{ 'Nutanix Guest Tools identificado' if (((resultado_ngt.result.Services | default([]) | length) > 0) or ((resultado_ngt.result.Packages | default([]) | length) > 0)) else 'Nutanix Guest Tools não identificado' }}"

@@ -1,0 +1,34 @@
+---
+# checks/agents.yml — agentes de monitoramento e Nutanix Guest Tools (NGT)
+
+- name: Detectar caminhos de instalação do NGT
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: "{{ linux_checkup_ngt_paths }}"
+  loop_control:
+    label: "{{ item }}"
+  register: linux_checkup_ngt_stat
+
+- name: Montar linhas dos agentes
+  ansible.builtin.set_fact:
+    linux_checkup_agents_lines: "{{ linux_checkup_agents_lines | default([]) + [line] }}"
+  loop: "{{ linux_checkup_agents }}"
+  loop_control:
+    label: "{{ item.name }}"
+  vars:
+    pkg_present: "{{ item.package in ansible_facts.packages }}"
+    svc: "{{ ansible_facts.services[item.service ~ '.service']
+             | default(ansible_facts.services[item.service] | default({})) }}"
+    line: >-
+      {{ '   - ' ~ item.name ~ ' [' ~ item.package ~ ']: '
+         ~ (('instalado v' ~ ansible_facts.packages[item.package][0].version) if pkg_present else 'AUSENTE')
+         ~ ' | serviço: ' ~ (svc.state | default('n/a'))
+         ~ ((' (' ~ svc.status ~ ')') if svc.status is defined else '') }}
+
+- name: Relatório — agentes
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + ['--- AGENTES ---'] + (linux_checkup_agents_lines | default([])) + _ngt }}"
+  vars:
+    _ngt_found: "{{ linux_checkup_ngt_stat.results | default([]) | selectattr('stat.exists', 'defined') | selectattr('stat.exists') | map(attribute='item') | list }}"
+    _ngt:
+      - "NGT (paths)..: {{ ('encontrado em ' ~ (_ngt_found | join(', '))) if _ngt_found | length > 0 else 'nenhum diretório NGT conhecido presente' }}"

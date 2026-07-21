@@ -1,0 +1,89 @@
+---
+# checks/updates.yml — atualizações pendentes e reboot pendente
+# Conta PACOTES ÚNICOS (não linhas): alguns mirrors listam mais de uma versão
+# candidata por pacote em "check-update --security" (uma linha por advisory),
+# o que infla uma contagem por linha. A contagem de segurança é sempre o
+# subconjunto da contagem total (intersect), nunca pode superá-la.
+
+- name: "(RedHat) Atualizar metadados do gerenciador"
+  ansible.builtin.command: "{{ ansible_facts['pkg_mgr'] }} -q makecache"
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - linux_checkup_refresh_cache | bool
+
+- name: "(RedHat) Verificar atualizações pendentes"
+  ansible.builtin.command: "{{ ansible_facts['pkg_mgr'] }} -q check-update"
+  register: linux_checkup_rh_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: "(RedHat) Verificar atualizações de segurança"
+  ansible.builtin.command: "{{ ansible_facts['pkg_mgr'] }} -q check-update --security"
+  register: linux_checkup_rh_sec
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: "(RedHat) Extrair nomes únicos de pacotes com update pendente"
+  ansible.builtin.set_fact:
+    linux_checkup_rh_total_names: >-
+      {{ linux_checkup_rh_updates.stdout_lines | default([])
+         | map('trim') | select('match', '^\S+\s+\S*[0-9]\S*\s+\S+$')
+         | map('regex_replace', '^(\S+)\s+.*$', '\1') | unique | list }}
+    linux_checkup_rh_sec_names: >-
+      {{ linux_checkup_rh_sec.stdout_lines | default([])
+         | map('trim') | select('match', '^\S+\s+\S*[0-9]\S*\s+\S+$')
+         | map('regex_replace', '^(\S+)\s+.*$', '\1') | unique | list }}
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: "(Debian) Atualizar cache do apt"
+  ansible.builtin.command: apt-get update
+  changed_when: false
+  failed_when: false
+  when:
+    - ansible_facts['os_family'] == 'Debian'
+    - linux_checkup_refresh_cache | bool
+
+- name: "(Debian) Simular upgrade para listar pendências"
+  ansible.builtin.command: apt-get -s -o Debug::NoLocking=true dist-upgrade
+  environment:
+    LANG: C
+  register: linux_checkup_deb_updates
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: "(RedHat) Checar necessidade de reboot"
+  ansible.builtin.command: needs-restarting -r
+  register: linux_checkup_rh_reboot
+  changed_when: false
+  failed_when: false
+  when: ansible_facts['os_family'] == 'RedHat'
+
+- name: "(Debian) Checar necessidade de reboot"
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: linux_checkup_deb_reboot
+  when: ansible_facts['os_family'] == 'Debian'
+
+- name: Relatório — atualizações
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines }}"
+  vars:
+    _rh_total: "{{ linux_checkup_rh_total_names | default([]) | length }}"
+    # segurança nunca pode superar o total — usamos a interseção com o total
+    _rh_security: "{{ (linux_checkup_rh_sec_names | default([])) | intersect(linux_checkup_rh_total_names | default([])) | length }}"
+    _deb_total: "{{ linux_checkup_deb_updates.stdout_lines | default([]) | select('match', '^Inst ') | list | length }}"
+    _deb_security: "{{ linux_checkup_deb_updates.stdout_lines | default([]) | select('match', '^Inst ') | select('search', '(?i)security') | list | length }}"
+    _updates: "{{ _rh_total if ansible_facts['os_family'] == 'RedHat' else _deb_total }}"
+    _security: "{{ _rh_security if ansible_facts['os_family'] == 'RedHat' else _deb_security }}"
+    _reboot: >-
+      {{ (linux_checkup_rh_reboot.rc | default(0) == 1)
+         or (linux_checkup_deb_reboot.stat.exists | default(false)) }}
+    _lines:
+      - "--- ATUALIZAÇÕES ---"
+      - "SO atualizado: {{ 'SIM (0 pendências)' if _updates | int == 0 else 'NÃO — ' ~ _updates ~ ' pacote(s) pendente(s) (segurança: ' ~ _security ~ ')' }}"
+      - "Reboot pend..: {{ _reboot }}"

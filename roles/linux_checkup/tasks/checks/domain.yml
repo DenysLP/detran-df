@@ -1,0 +1,42 @@
+---
+# checks/domain.yml — ingresso no domínio (PBIS ou SSSD/realmd)
+
+- name: Detectar binário do PBIS
+  ansible.builtin.stat:
+    path: /opt/pbis/bin/domainjoin-cli
+  register: linux_checkup_pbis_bin
+
+- name: PBIS — consultar ingresso no domínio
+  ansible.builtin.command: /opt/pbis/bin/domainjoin-cli query
+  register: linux_checkup_pbis
+  changed_when: false
+  failed_when: false
+  when: linux_checkup_pbis_bin.stat.exists | default(false)
+
+- name: realmd/SSSD — listar domínios
+  ansible.builtin.command: realm list
+  register: linux_checkup_realm
+  changed_when: false
+  failed_when: false
+
+- name: Relatório — domínio (AD)
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines }}"
+  vars:
+    _sssd: "{{ (ansible_facts.services['sssd.service'].state | default('')) == 'running' }}"
+    _pbis_joined: "{{ (linux_checkup_pbis.rc | default(1)) == 0 and ('Domain =' in (linux_checkup_pbis.stdout | default(''))) }}"
+    _realm_joined: "{{ (linux_checkup_realm.rc | default(1)) == 0 and (linux_checkup_realm.stdout | default('') | trim | length) > 0 }}"
+    _realm_domain: "{{ (linux_checkup_realm.stdout_lines | default([]) | select('match', '^[a-zA-Z0-9]') | list | first | default('')) | trim }}"
+    _method: >-
+      {{ 'PBIS' if _pbis_joined
+         else ('SSSD/realmd' if _realm_joined
+         else ('SSSD (serviço ativo, sem realm list)' if _sssd else 'não ingressado/não detectado')) }}
+    _domain: >-
+      {{ (linux_checkup_pbis.stdout | default('') | regex_search('Domain = (\S+)', '\1') | first | default(''))
+         if _pbis_joined
+         else (_realm_domain if _realm_joined else 'n/d') }}
+    _lines:
+      - "--- DOMÍNIO (AD) ---"
+      - "Método.......: {{ _method }}"
+      - "Domínio......: {{ _domain }}"
+      - "Esperado.....: {{ (linux_checkup_expected_domain ~ (' -> OK' if linux_checkup_expected_domain in (_domain | string) else ' -> DIVERGE/não confirmado')) if linux_checkup_expected_domain | length > 0 else '(não especificado)' }}"

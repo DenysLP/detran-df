@@ -1,0 +1,47 @@
+---
+# tasks/main.yml — windows_checkup (orquestrador)
+# Inventário/check-up READ-ONLY de VMs Windows. Cada bloco em tasks/checks/*.yml
+# coleta via PowerShell e guarda um fato estruturado; report.yml monta o relatório
+# legível e publica via set_stats. Nada aqui altera o sistema.
+
+- name: Validar que o host é Windows
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] | default('Windows') == 'Windows'
+    fail_msg: "Esta role é específica para Windows (os_family detectado: {{ ansible_facts['os_family'] | default('desconhecido') }})."
+  when: windows_checkup_assert_windows | bool
+
+- name: Validar acesso (WinRM) à VM Windows
+  ansible.windows.win_ping:
+  register: resultado_conexao
+
+- name: Armazenar resultado da conexão
+  ansible.builtin.set_fact:
+    validacao_conexao:
+      status: "{{ 'Sucesso' if resultado_conexao is succeeded else 'Falha' }}"
+      mensagem: "{{ resultado_conexao.ping | default(resultado_conexao.msg | default('Sem retorno')) }}"
+
+# Ordem = ordem do checklist
+- name: Bloco — Sistema operacional
+  ansible.builtin.include_tasks: checks/system.yml
+- name: Bloco — Acesso (usuário/senha via WinRM e chave SSH)
+  ansible.builtin.include_tasks: checks/access.yml
+- name: Bloco — Rede (interfaces, IP, DNS, conectividade)
+  ansible.builtin.include_tasks: checks/network.yml
+- name: Bloco — Disco e volumes
+  ansible.builtin.include_tasks: checks/storage.yml
+- name: Bloco — Atualizações do SO
+  ansible.builtin.include_tasks: checks/updates.yml
+- name: Bloco — Proxy
+  ansible.builtin.include_tasks: checks/proxy.yml
+- name: Bloco — Firewall
+  ansible.builtin.include_tasks: checks/firewall.yml
+- name: Bloco — Pacotes instalados
+  ansible.builtin.include_tasks: checks/packages.yml
+- name: Bloco — Agentes (monitoramento e NGT)
+  ansible.builtin.include_tasks: checks/agents.yml
+- name: Bloco — Domínio (AD)
+  ansible.builtin.include_tasks: checks/domain.yml
+
+- name: Bloco — Relatório e publicação
+  ansible.builtin.include_tasks: checks/report.yml

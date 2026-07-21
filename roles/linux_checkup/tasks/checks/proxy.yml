@@ -1,0 +1,23 @@
+---
+# checks/proxy.yml — proxy configurado (ambiente + arquivos de config)
+
+- name: Procurar configuração de proxy nos arquivos de sistema
+  ansible.builtin.shell: >-
+    grep -RiEn 'https?_proxy|Acquire::http.*Proxy|^\s*proxy\s*=' {{ linux_checkup_proxy_scan_paths | join(' ') }} 2>/dev/null
+    | grep -vE '^\s*#' || true
+  register: linux_checkup_proxy_grep
+  changed_when: false
+
+- name: Relatório — proxy
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines + _file_lines }}"
+  vars:
+    _http: "{{ ansible_env.http_proxy | default(ansible_env.HTTP_PROXY | default('')) }}"
+    _https: "{{ ansible_env.https_proxy | default(ansible_env.HTTPS_PROXY | default('')) }}"
+    _noproxy: "{{ ansible_env.no_proxy | default(ansible_env.NO_PROXY | default('')) }}"
+    _hits: "{{ linux_checkup_proxy_grep.stdout_lines | default([]) }}"
+    _lines:
+      - "--- PROXY ---"
+      - "Env..........: http={{ _http or '(vazio)' }} | https={{ _https or '(vazio)' }} | no_proxy={{ _noproxy or '(vazio)' }}"
+      - "Arquivos.....:{{ '' if _hits | length > 0 else ' nenhum proxy em arquivos de config' }}"
+    _file_lines: "{{ _hits | map('regex_replace', '^', '   ') | list }}"

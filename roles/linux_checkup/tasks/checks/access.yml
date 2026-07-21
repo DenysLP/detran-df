@@ -1,0 +1,48 @@
+---
+# checks/access.yml — login por usuário/senha e por chave SSH (config efetiva do sshd)
+# Importante: com become:true no play, ansible_env/ansible_user_id refletem o usuário
+# de ESCALADA (ex.: root), não quem de fato loga via SSH. Por isso resolvemos o home
+# do usuário de CONEXÃO (ansible_user) via getent, sem become.
+
+- name: Ler configuração efetiva do sshd
+  ansible.builtin.command: sshd -T
+  register: linux_checkup_sshd
+  changed_when: false
+  failed_when: false
+  when: linux_checkup_ssh_config_check | bool
+
+- name: Identificar o usuário de conexão SSH
+  ansible.builtin.set_fact:
+    linux_checkup_conn_user: "{{ ansible_user | default(ansible_ssh_user) | default(ansible_user_id) }}"
+
+- name: Obter o diretório home do usuário de conexão
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ linux_checkup_conn_user }}"
+  become: false
+  register: linux_checkup_getent
+  failed_when: false
+
+- name: Checar authorized_keys do usuário de conexão
+  # OBS: contas de domínio (PBIS/SSSD) podem registrar getent_passwd com a chave
+  # canônica "DOMINIO\usuario", diferente do valor consultado ("usuario") — por
+  # isso pegamos o único valor retornado em vez de indexar pelo nome consultado.
+  ansible.builtin.stat:
+    path: >-
+      {{ ((ansible_facts.getent_passwd | default({})).values() | list | first)[4]
+         if (ansible_facts.getent_passwd | default({})) | length > 0
+         else '/home/' ~ linux_checkup_conn_user }}/.ssh/authorized_keys
+  become: false
+  register: linux_checkup_ak
+  failed_when: false
+
+- name: Relatório — acesso
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines }}"
+  vars:
+    _pwauth: "{{ (linux_checkup_sshd.stdout_lines | default([]) | select('match', '^passwordauthentication') | list | first | default('passwordauthentication n/d')).split()[1] }}"
+    _pubkey: "{{ (linux_checkup_sshd.stdout_lines | default([]) | select('match', '^pubkeyauthentication') | list | first | default('pubkeyauthentication n/d')).split()[1] }}"
+    _lines:
+      - "--- ACESSO (SSH) ---"
+      - "Login senha..: PasswordAuthentication = {{ _pwauth }}"
+      - "Login chave..: PubkeyAuthentication = {{ _pubkey }} | authorized_keys de {{ linux_checkup_conn_user }}: {{ 'presente' if (linux_checkup_ak.stat.exists | default(false) and (linux_checkup_ak.stat.size | default(0)) > 0) else 'ausente/vazio' }}"

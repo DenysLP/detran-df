@@ -1,0 +1,13 @@
+---
+# checks/packages.yml — pacotes instalados (total + obrigatórios faltando)
+
+- name: Relatório — pacotes
+  ansible.builtin.set_fact:
+    linux_checkup_report: "{{ linux_checkup_report + _lines }}"
+  vars:
+    _total: "{{ ansible_facts.packages | length }}"
+    _missing: "{{ linux_checkup_required_packages | reject('in', ansible_facts.packages) | list }}"
+    _lines:
+      - "--- PACOTES ---"
+      - "Total instalado......: {{ _total }}"
+      - "Obrigatórios faltando: {{ _missing | join(', ') if _missing | length > 0 else ('(nenhum)' if linux_checkup_required_packages | length > 0 else 'lista não definida') }}"
